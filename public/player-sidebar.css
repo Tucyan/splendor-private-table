@@ -1,0 +1,193 @@
+/* Player presence / market / personal resources and actions. */
+.game-page{max-width:1920px}
+.game-layout{grid-template-columns:160px minmax(0,1fr) 320px;gap:18px}
+.players-column,.market-column,.personal-sidebar{min-width:0}
+.player-panel{padding:12px 10px;margin-bottom:9px}
+.player-head{margin:0;gap:8px}
+.player-head .avatar{width:30px;height:30px;font-size:14px;flex-shrink:0}
+.player-name{min-width:0;flex:1}
+.player-name strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.player-name>span{font-size:9px}
+.player-kick{padding:2px;flex-shrink:0}
+.latest-action{font-size:10px;line-height:1.8;color:var(--muted);margin-top:10px;overflow-wrap:anywhere}
+.personal-sidebar{padding:14px;background:linear-gradient(145deg,#293b35,#1a2a30);border:1px solid #7b89645c;border-radius:10px}
+.personal-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.personal-heading .eyebrow{font-size:8px;letter-spacing:2px}
+.personal-heading h2{font:22px var(--serif);margin-top:2px}
+.personal-score{font:28px/1 var(--serif);color:var(--gold);text-align:center}
+.personal-score small{display:block;font:9px var(--sans);color:var(--muted);margin-top:4px}
+.personal-sidebar .section-label{font-size:11px;margin-bottom:6px;gap:6px}
+.personal-sidebar .section-label>span{font-size:9px}
+.personal-sidebar .bank-panel{padding:10px;background:#10212770}
+.personal-sidebar .gem-bank{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;margin:12px 0 10px}
+.personal-sidebar .token{width:33px;height:33px;border-width:2px}
+.personal-sidebar .token>.gem{width:21px;height:21px}
+.personal-sidebar .token b{width:17px;height:17px;font-size:9px}
+.personal-sidebar .token-button{font-size:8px;gap:5px}
+.personal-sidebar .token em{width:16px;height:16px;font-size:9px}
+.personal-sidebar .selection-status{display:flex;width:100%;margin:5px 0;padding:0;font-size:9px}
+.personal-sidebar .bank-panel>.btn{width:100%;height:30px;font-size:11px}
+.my-gems,.my-bonuses,.my-equivalent{margin-top:10px}
+.owned-bonuses{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+.owned-bonuses>span{display:flex;align-items:center;justify-content:center;gap:6px;background:#13272980;padding:6px 2px;border-radius:5px}
+.owned-bonuses .gem{width:18px;height:18px}
+.owned-bonuses b{font-size:12px;font-weight:500}
+.my-equivalent .owned-bonuses>span{background:#67865a25;color:#d7e8c7}
+.owned-gold{display:flex;align-items:center;gap:6px;border-top:1px solid #bca56733;padding-top:8px;margin-top:8px;font-size:10px;color:#dfc28b}
+.owned-gold strong{font-size:14px;font-weight:500}
+.owned-gold small{margin-left:auto;color:#97a995;font-size:8px}
+.purchase-hint{display:flex;align-items:center;gap:5px;margin-top:8px;color:#afd5b3;font-size:10px}
+.purchase-hint .icon{width:13px;height:13px}
+.purchase-hint strong{color:#d7eabd;margin:0 3px}
+.personal-sidebar .hand{padding:10px 0 0;margin-top:9px;border:0;border-top:1px solid #7c99733b;border-radius:0;background:none}
+.personal-sidebar .hand-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.personal-sidebar .hand-cards .dev-card{width:100%;max-width:none;aspect-ratio:.83;border-radius:5px}
+.personal-sidebar .card-top{left:6px;right:5px;top:6px}
+.personal-sidebar .prestige{font-size:23px}
+.personal-sidebar .bonus{width:23px;height:28px}
+.personal-sidebar .bonus .gem{width:18px;height:18px}
+.personal-sidebar .card-bottom{left:4px;right:3px;bottom:6px}
+.personal-sidebar .costs{gap:1px}
+.personal-sidebar .cost{height:17px;font-size:9px;min-width:0;padding:1px;gap:1px}
+.personal-sidebar .cost .gem{width:10px;height:10px}
+.personal-sidebar .card-place{font-size:7px;letter-spacing:0;margin-top:3px}
+.personal-sidebar .empty-hand{grid-column:1/-1;border:1px dashed #65816d66;border-radius:7px;padding:15px 5px;font-size:10px}
+.personal-sidebar .empty-hand small{display:block;margin-top:4px}
+.collection-button{display:flex;align-items:center;gap:8px;width:100%;background:none;border-top:1px solid #7c99733b;padding:10px 0 0;margin-top:10px;font-size:10px;text-align:left;color:#cdd4ce}
+.collection-button>span:last-child{margin-left:auto;font-size:9px;color:#a5b8a1}
+.collection-button strong{font-weight:500;color:var(--gold)}
+.collection-button:hover{color:var(--gold)}
+.collection-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.collection-grid .dev-card{width:100%;aspect-ratio:.8;opacity:1}
+.history-list p{font-size:12px;padding:10px 0;border-bottom:1px solid #7c997330;line-height:1.8}
+.market-column .market-heading{margin-top:14px}
+.market-column .market-row{grid-template-columns:40px repeat(4,minmax(0,1fr))}
+.market-column .dev-card{aspect-ratio:1}
+.dev-card.affordable{border:2px solid #b7df94;box-shadow:0 0 0 2px #83b57b32,0 0 18px #acd48330}
+.dev-card.affordable:not(:disabled):hover{border-color:#e2f7b9;box-shadow:0 0 0 2px #b7df9455,0 0 24px #acd48350}
+.affordability-badge{position:absolute;top:52px;left:8px;background:#c3e6a8;color:#21372c;border:1px solid #e2f1bb;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:600;white-space:nowrap}
+.personal-sidebar .affordability-badge{top:39px;left:3px;font-size:8px;padding:1px 3px}
+.card-tooltip{position:fixed;width:252px;max-width:calc(100vw - 20px);padding:15px 17px;border:1px solid #8b98755e;border-radius:9px;background:#182a2ef7;color:#e5eadb;box-shadow:0 8px 32px #0008;pointer-events:none;z-index:30}
+.card-tooltip[hidden]{display:none}
+.card-tooltip>strong{font-size:13px;font-weight:500;color:#ead0a1}
+.shortfall-colors{display:flex;flex-wrap:wrap;gap:9px 12px;margin:12px 0}
+.shortfall-colors>span{display:flex;align-items:center;gap:5px;font-size:10px}
+.shortfall-colors b{font-weight:600;color:#e8ead6}
+.card-tooltip>p{font-size:10px;color:#9bafa7;line-height:1.8}
+.blocked-turn-note{font-size:9px;color:#d2bb8f;padding-top:5px;line-height:1.5}
+.gold-payment-note{font-size:10px;margin-top:10px;line-height:1.8;color:#c9b380}
+.room-tools>.end-game-button{display:inline-flex!important;color:#cf9e85;font-size:11px}
+.personal-sidebar .ai-result{font-size:9px;margin-top:5px}
+.personal-sidebar .ai-notice{font-size:9px;line-height:1.5;margin-top:5px;padding:5px}
+/* Three height-aware market rows keep the active desktop table in one viewport. */
+@media(min-width:1100px) and (min-height:650px){
+  .at-table .header{height:56px;max-width:1920px;padding:0 24px}
+  .at-table .brand{font-size:20px}
+  .at-table .brand small{font-size:7px}
+  .at-table footer{display:none}
+  .at-table .game-page{height:calc(100dvh - 56px);padding:12px 24px 14px;display:flex;flex-direction:column}
+  .game-page .room-top{flex-shrink:0;margin-bottom:10px;min-height:42px}
+  .game-page .room-top .eyebrow{display:none}
+  .game-page .room-top h1{font-size:23px;margin:0}
+  .game-page .room-code{padding:7px 12px}
+  .game-page .room-code strong{font-size:20px;line-height:24px}
+  .game-page .turn-banner{padding:8px 13px;margin-bottom:12px;flex-shrink:0;min-height:36px}
+  .game-page .turn-banner>span:first-child{font-size:17px;line-height:20px}
+  .game-page .game-layout{flex:1;min-height:0;align-items:stretch;grid-template-columns:150px minmax(0,1fr) 310px;gap:18px}
+  .market-column{display:flex;flex-direction:column;min-height:0}
+  .market-column>.section-label{margin-bottom:7px;flex-shrink:0;font-size:11px}
+  .market-column .nobles{min-height:50px;flex-shrink:0}
+  .market-column .noble{padding:7px;min-width:0;gap:7px}
+  .market-column .noble-title{font-size:8px;gap:7px}
+  .market-column .noble-title b{font-size:18px}
+  .market-column .noble-portrait{width:25px;height:30px}
+  .market-column .noble-cost{gap:5px}
+  .market-column .noble-cost .gem{width:12px;height:12px}
+  .market-column .market-heading{margin-top:12px}
+  .market-column .market{flex:1;min-height:0;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:10px}
+  .market-column .market-row{min-height:0;gap:10px}
+  .market-column .dev-card{aspect-ratio:auto;min-height:0;height:100%;width:100%}
+  .market-column .card-top{top:8px;left:10px;right:8px}
+  .market-column .prestige{font-size:30px}
+  .market-column .bonus{width:30px;height:35px}
+  .market-column .bonus .gem{width:23px;height:23px}
+  .market-column .card-bottom{bottom:8px;left:8px;right:6px}
+  .market-column .card-place{font-size:9px;margin-top:3px}
+  .market-column .cost{font-size:11px;height:20px;min-width:22px;padding:1px 3px}
+  .market-column .cost .gem{width:12px;height:12px}
+  .market-column .affordability-badge{top:44px;left:8px;font-size:9px}
+  .personal-sidebar{min-height:0;padding:12px;display:flex;flex-direction:column}
+  .personal-heading{margin-bottom:9px}
+  .personal-sidebar .hand{flex:1;min-height:90px;display:flex;flex-direction:column}
+  .personal-sidebar .hand-cards{flex:1;min-height:0;max-height:180px}
+  .personal-sidebar .hand-cards .dev-card{aspect-ratio:auto;height:100%;min-height:0}
+  .personal-sidebar .empty-hand{align-self:stretch;display:flex;flex-direction:column;justify-content:center}
+  .personal-sidebar .collection-button{flex-shrink:0}
+  .game-page .results{padding:12px 18px;margin-bottom:12px;flex-shrink:0}
+  .game-page .results h2{font-size:20px;margin:3px 0}
+}
+@media(min-width:1100px) and (min-height:650px) and (max-height:849px){
+  .at-table .header{height:48px}
+  .at-table .game-page{height:calc(100dvh - 48px);padding-top:8px}
+  .game-page .room-top{margin-bottom:6px}
+  .game-page .turn-banner{margin-bottom:8px}
+  .personal-sidebar{line-height:1.3;padding:10px}
+  .personal-heading{margin-bottom:8px}
+  .personal-heading .eyebrow{display:block;line-height:10px}
+  .personal-heading h2{font-size:20px;line-height:24px;margin:0}
+  .personal-score{font-size:25px}
+  .personal-sidebar .section-label{line-height:14px;margin-bottom:4px}
+  .personal-sidebar .bank-panel{padding:8px}
+  .personal-sidebar .gem-bank{margin:9px 0 7px}
+  .personal-sidebar .selection-status{line-height:13px;min-height:13px;margin:4px 0}
+  .personal-sidebar .bank-panel>.btn{height:28px}
+  .personal-sidebar .token-button{line-height:12px}
+  .my-gems,.my-bonuses,.my-equivalent{margin-top:7px}
+  .owned-bonuses>span{padding:4px 2px;line-height:18px}
+  .owned-gold{padding-top:5px;margin-top:6px;line-height:18px}
+  .purchase-hint{margin-top:5px;line-height:13px;font-size:9px}
+  .personal-sidebar .hand{margin-top:7px;padding-top:7px;min-height:112px}
+  .personal-sidebar .collection-button{padding-top:7px;margin-top:7px;line-height:14px}
+  .personal-sidebar .affordability-badge{display:none}
+  .personal-sidebar .ai-notice{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+@media(min-width:1500px) and (min-height:850px){
+  .game-page .game-layout{grid-template-columns:180px minmax(0,1fr) 350px;gap:24px}
+  .at-table .game-page{padding:18px 30px 20px}
+  .personal-sidebar{padding:18px}
+  .personal-heading{margin-bottom:16px}
+  .personal-sidebar .token{width:39px;height:39px}
+  .personal-sidebar .gem-bank{margin:16px 0}
+  .personal-sidebar .bank-panel>.btn{height:36px}
+  .my-gems,.my-bonuses,.my-equivalent{margin-top:17px}
+  .owned-bonuses>span{padding:9px 2px}
+  .personal-sidebar .hand{margin-top:15px;padding-top:15px}
+  .market-column .prestige{font-size:38px}
+  .market-column .cost{font-size:14px;height:26px;min-width:29px}
+  .market-column .cost .gem{width:16px;height:16px}
+}
+@media(max-width:1099px){
+  .game-page{padding:20px}
+  .game-layout{grid-template-columns:minmax(0,1fr) 300px;gap:16px}
+  .players-column{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .players-column>.section-label,.players-column .latest-action{display:none}
+  .players-column .player-panel{margin:0}
+  .players-column .log-button{grid-column:1/-1;margin:0;padding-top:6px}
+  .market-column{grid-column:1;grid-row:2}
+  .personal-sidebar{grid-column:2;grid-row:2}
+}
+@media(max-width:720px){
+  .game-page{padding:20px 14px}
+  .game-layout{grid-template-columns:minmax(0,1fr);gap:16px}
+  .players-column{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .personal-sidebar{grid-column:1;grid-row:2}
+  .market-column{grid-column:1;grid-row:3}
+  .personal-sidebar .hand-cards .dev-card{aspect-ratio:1}
+  .market-column .market-row{grid-template-columns:28px repeat(4,minmax(0,1fr));gap:5px}
+  .market-column .dev-card{aspect-ratio:.67}
+  .affordability-badge{top:37px;left:3px;font-size:8px;padding:1px 3px}
+  .market-heading.section-label{align-items:flex-start}
+  .market-heading.section-label>span{font-size:8px;max-width:150px;text-align:right}
+  .game-page .room-top{flex-wrap:wrap}
+  .game-page .room-tools{margin-left:auto}
+}
