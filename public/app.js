@@ -1,5 +1,8 @@
 import {canAffordCard,purchaseGap,discountedCost} from './player-view.js';
 
+const basePath=new URL('.',import.meta.url).pathname;
+const appPath=(path='')=>basePath+path.replace(/^\/+/, '');
+
 const $=s=>document.querySelector(s);
 const COLORS=['white','blue','green','red','black'];
 const ALL=[...COLORS,'gold'];
@@ -17,7 +20,7 @@ function icon(name){const shapes={arrow:'M5 12h14m-6-6 6 6-6 6',copy:'M9 9h11v12
 function toast(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),4200);}
 
 async function api(path,body){
-  const res=await fetch(path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+  const res=await fetch(appPath(path),{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
   const data=await res.json();if(!res.ok)throw new Error(data.error||'操作失败');return data;
 }
 function accept(next){
@@ -33,13 +36,13 @@ async function mutate(path,body={}){
   try{accept(await api(path,body));}catch(e){toast(e.message);}finally{busy=false;document.body.classList.remove('busy');}
 }
 function connect(){
-  source?.close();source=new EventSource('/api/events');
+  source?.close();source=new EventSource(appPath('/api/events'));
   source.onopen=()=>{connected=true;renderConnection();};
   source.onmessage=e=>{connected=true;accept(JSON.parse(e.data));};
   source.onerror=()=>{connected=false;renderConnection();};
 }
 function renderConnection(){const el=$('#connection');if(el){el.className=`connection ${connected?'':'offline'}`;el.innerHTML=`<i></i>${connected?'已连接':'连接中…'}`;}}
-function header(){return `<header class="header"><a class="brand" href="/" aria-label="璀璨宝石首页"><img src="/assets/mark.svg" width="31" height="31" alt=""><span>璀璨宝石<small>SPLENDOR · PRIVATE TABLE</small></span></a><nav><span id="connection" class="connection"><i></i>已连接</span><button class="text-btn" data-do="rules">${icon('book')}<span>游戏规则</span></button><button class="profile" data-do="profile"><span class="avatar small">${esc(state.me.name.slice(0,1))}</span><span>${esc(state.me.name)}</span><span class="edit-mark">⌑</span></button></nav></header>`;}
+function header(){return `<header class="header"><a class="brand" href="${esc(basePath)}" aria-label="璀璨宝石首页"><img src="./assets/mark.svg" width="31" height="31" alt=""><span>璀璨宝石<small>SPLENDOR · PRIVATE TABLE</small></span></a><nav><span id="connection" class="connection"><i></i>已连接</span><button class="text-btn" data-do="rules">${icon('book')}<span>游戏规则</span></button><button class="profile" data-do="profile"><span class="avatar small">${esc(state.me.name.slice(0,1))}</span><span>${esc(state.me.name)}</span><span class="edit-mark">⌑</span></button></nav></header>`;}
 function footer(){return `<footer><span>为相聚而开的一张桌</span><span>基础版 · 2–4 人 · 原创插画</span><span>SPLENDOR / 私人桌游室</span></footer>`;}
 function cardHTML(card,{hero=false,disabled=false}={}){
   const art=['mine','harbor','estate'][card.level-1];
@@ -48,7 +51,7 @@ function cardHTML(card,{hero=false,disabled=false}={}){
   const affordable=!hero&&!disabled&&room?.game?.status==='playing'&&canAffordCard(me,card);
   const ready=affordable&&room.legalActions.some(a=>a.type==='buy'&&a.cardId===card.id);
   const badge=ready?'可购买':'可负担';
-  return `<button class="dev-card level-${card.level} ${hero?'hero-card':''} ${affordable?'affordable':''}" ${disabled?'disabled':''} ${hero?'':`data-card="${esc(card.id)}"`} aria-label="${card.level}级${NAMES[card.bonus]}卡，${card.points}分，${COLORS.filter(c=>card.cost[c]).map(c=>NAMES[c]+card.cost[c]).join('、')}${affordable?'，'+badge:''}"><img class="card-art" src="/assets/${art}.svg" alt="" style="filter:hue-rotate(${COLORS.indexOf(card.bonus)*17-25}deg)"><div class="card-top"><span class="prestige">${card.points||'<span class="zero-point">·</span>'}</span><span class="bonus ${card.bonus}">${gem(card.bonus,30)}</span></div><div class="card-bottom"><div class="costs">${costs}</div><span class="card-place">${['山谷矿场','远洋商路','翡翠庄园'][card.level-1]}</span></div>${affordable?`<span class="affordability-badge">✓ ${badge}</span>`:''}</button>`;
+  return `<button class="dev-card level-${card.level} ${hero?'hero-card':''} ${affordable?'affordable':''}" ${disabled?'disabled':''} ${hero?'':`data-card="${esc(card.id)}"`} aria-label="${card.level}级${NAMES[card.bonus]}卡，${card.points}分，${COLORS.filter(c=>card.cost[c]).map(c=>NAMES[c]+card.cost[c]).join('、')}${affordable?'，'+badge:''}"><img class="card-art" src="./assets/${art}.svg" alt="" style="filter:hue-rotate(${COLORS.indexOf(card.bonus)*17-25}deg)"><div class="card-top"><span class="prestige">${card.points||'<span class="zero-point">·</span>'}</span><span class="bonus ${card.bonus}">${gem(card.bonus,30)}</span></div><div class="card-bottom"><div class="costs">${costs}</div><span class="card-place">${['山谷矿场','远洋商路','翡翠庄园'][card.level-1]}</span></div>${affordable?`<span class="affordability-badge">✓ ${badge}</span>`:''}</button>`;
 }
 
 function home(){
@@ -201,7 +204,7 @@ document.addEventListener('click',async e=>{
     case 'reset':return mutate('/api/room/reset');
     case 'finish':return confirmDialog('结束当前对局？','将立即停止本局及 AI 思考，按当前声望和发展卡数量结算。房间与玩家席位会保留，可返回大厅再开一局。','finish','结束并结算');
     case 'copy':return copy(state.room.code,'房间号已复制');
-    case 'invite':return copy(`${location.origin}/?room=${state.room.code}`,'邀请链接已复制，发给朋友吧');
+    case 'invite':return copy(`${location.origin}${basePath}?room=${state.room.code}`,'邀请链接已复制，发给朋友吧');
     case 'leave':return confirmDialog('离开这张桌？',state.room.game?.status==='playing'?'本局将由本地策略接管你的席位。离开后无法重新加入本局。':'你的座位将被空出；如果你是房主，会将房主交给下一位真人玩家。','leave','离开房间');
     case 'clear-gems':selection={};$('#bank-panel').innerHTML=bankPanel();return;
     case 'take':return act({type:state.room.game.pending?.type==='discard'?'discard':'take',gems:{...selection}});

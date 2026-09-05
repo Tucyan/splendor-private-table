@@ -12,8 +12,7 @@ command -v node
 
 要求 Node.js 22 或更高版本。压缩包解压后路径应为 `/opt/splendor`。
 
-如果 `command -v node` 不是 `/usr/bin/node`，请修改
-`/opt/splendor/deploy/splendor.service` 中的 `ExecStart`。
+本服务器部署使用 `/opt/node-v24.11.1-linux-x64/bin/node`，以免影响现有服务使用的 Node.js 版本。
 
 ## 2. 创建用户和配置
 
