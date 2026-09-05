@@ -1,0 +1,203 @@
+.player-score{flex-shrink:0;min-width:22px;text-align:right;color:var(--gold);font:21px/1 var(--serif)}
+.player-score small{font:9px var(--sans);margin-left:2px}
+.mobile-inventory,.mobile-table-tools{display:none}
+.summary-bonus{display:none}
+.inventory-tabs{display:flex;border-bottom:1px solid var(--line);margin-bottom:14px}
+.inventory-tabs button{flex:1;min-height:44px;background:none;color:var(--muted);border-bottom:2px solid transparent;font-size:13px}
+.inventory-tabs [aria-selected="true"]{color:var(--gold);border-color:var(--gold)}
+dialog[data-kind="inventory"] h2{margin-top:0}
+dialog[data-kind="inventory"] h2 small{font:13px var(--sans);color:var(--gold)}
+dialog[data-kind="inventory"] .my-gems{margin-top:0}
+dialog[data-kind="inventory"] .my-bonuses,dialog[data-kind="inventory"] .my-equivalent{margin-top:16px}
+dialog[data-kind="inventory"] .hand{background:none;border:0;padding:0;margin:0}
+dialog[data-kind="inventory"] .hand-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+dialog[data-kind="inventory"] .hand-cards .dev-card{width:100%;max-width:none;aspect-ratio:.7}
+dialog[data-kind="inventory"] .empty-hand{grid-column:1/-1;min-height:150px;display:grid;place-items:center}
+.table-menu{display:grid;gap:10px}
+.card-gap{color:#ecc5a1}
+
+/* Phones use a bounded table and an inventory dialog, never a shrunken desktop. */
+@media(max-width:1099px), (max-width:1199px) and (max-height:649px){
+  .at-table{height:100dvh;min-height:0;overscroll-behavior:none}
+  .at-table #app{height:100%;display:flex;flex-direction:column}
+  .at-table *{letter-spacing:0}
+  .at-table .header{width:100%;height:calc(38px + env(safe-area-inset-top));min-height:calc(38px + env(safe-area-inset-top));padding:env(safe-area-inset-top) max(10px,env(safe-area-inset-right)) 0 max(10px,env(safe-area-inset-left));gap:8px}
+  .at-table .brand{font-size:17px;gap:6px;white-space:nowrap}
+  .at-table .brand img{width:23px;height:23px}
+  .at-table .brand small,.at-table .header nav>.text-btn,.at-table .header .profile,.at-table footer{display:none}
+  .at-table .header nav{margin-right:88px}
+  .at-table .connection{display:flex!important;font-size:9px;white-space:nowrap}
+  .mobile-table-tools{display:flex;gap:2px;position:absolute;right:max(6px,env(safe-area-inset-right));top:env(safe-area-inset-top);height:38px}
+  .mobile-table-tools .icon-btn{width:40px;height:38px}
+  .at-table .game-page{flex:1;min-height:0;width:100%;padding:4px max(8px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:6px}
+  .game-page>.room-top{display:none}
+  .game-page .turn-banner{flex-shrink:0;min-height:28px;margin:0;padding:4px 8px;gap:6px;flex-wrap:nowrap;font-size:11px}
+  .game-page .turn-banner strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .game-page .turn-banner>span:first-child{font-size:15px}
+  .game-page .turn-banner>span:nth-of-type(2){display:none}
+  .game-page .turn-banner .final-tag{font-size:9px;margin-left:auto;white-space:nowrap;padding:2px 4px}
+  .game-page .game-layout{flex:1;min-height:0;display:grid;align-items:stretch;grid-template-columns:minmax(0,1fr);grid-template-rows:50px minmax(0,1fr) auto;gap:6px}
+  .game-page .players-column{grid-column:1;grid-row:1;display:grid;grid-template-columns:repeat(var(--player-count),minmax(0,1fr));gap:4px;min-height:0}
+  .players-column>.section-label,.players-column .latest-action,.players-column .log-button{display:none}
+  .players-column .player-panel{margin:0;padding:4px;border-radius:5px;min-width:0}
+  .players-column .player-head{display:grid;grid-template-columns:18px minmax(0,1fr) auto;grid-template-rows:20px 14px;gap:2px 3px;margin:0}
+  .players-column .player-name{display:contents}
+  .players-column .player-head .avatar{grid-column:1;grid-row:1;width:18px;height:18px;font-size:10px}
+  .players-column .player-head .avatar .icon{width:14px;height:14px}
+  .players-column .player-name strong{grid-column:2/-1;grid-row:1;font-size:10px;align-self:center}
+  .players-column .player-name strong small{font-size:8px}
+  .players-column .player-name>span{grid-row:2;grid-column:1/3;font-size:8px;margin:0;gap:3px;white-space:nowrap}
+  .players-column .player-score{grid-row:2;grid-column:3;font:16px/14px var(--serif);min-width:20px;white-space:nowrap}
+  .players-column .player-score small{font-size:8px}
+  .players-column .player-kick{display:none}
+  .game-page .market-column{grid-column:1;grid-row:2;min-height:0;display:flex;flex-direction:column;gap:5px}
+  .market-column>.section-label{display:none}
+  .market-column .nobles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));flex-shrink:0;gap:4px;min-height:0}
+  .market-column .noble{width:100%;max-width:none;min-width:0;height:48px;padding:4px;display:flex;justify-content:center;border-radius:4px}
+  .market-column .noble-portrait{display:none}
+  .market-column .noble-title{font-size:0;justify-content:center}
+  .market-column .noble-title b{font-size:15px}
+  .market-column .noble-cost{gap:2px;margin-top:1px;justify-content:center}
+  .market-column .noble-cost>span{gap:0;font-size:9px}
+  .market-column .noble-cost .gem{width:10px;height:10px}
+  .market-column .market{flex:1;min-height:0;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:5px}
+  .market-column .market-row{min-height:0;grid-template-columns:24px repeat(4,minmax(0,1fr));gap:4px}
+  .market-column .dev-card{height:100%;width:100%;min-height:0;aspect-ratio:auto;border-radius:4px}
+  .market-column .dev-card:hover{transform:none}
+  .market-column .card-top{top:4px;left:4px;right:4px}
+  .market-column .prestige{font-size:23px;line-height:26px}
+  .market-column .bonus{width:22px;height:25px}
+  .market-column .bonus .gem{width:17px;height:17px}
+  .market-column .card-bottom{bottom:4px;left:3px;right:3px}
+  .market-column .costs{display:flex;flex-wrap:wrap;gap:2px;max-width:100%}
+  .market-column .cost{min-width:19px;height:18px;padding:1px 2px;gap:1px;font-size:10px}
+  .market-column .cost .gem{width:10px;height:10px}
+  .market-column .card-place,.market-column .affordability-badge{display:none}
+  .market-column .deck{padding:4px 1px;border-radius:4px;min-height:0}
+  .market-column .deck>.gem{display:none}
+  .market-column .deck-level{font-size:16px}
+  .market-column .deck>span:last-child{font-size:10px}
+  .market-column .deck>span small{display:none}
+  .game-page .personal-sidebar{grid-column:1;grid-row:3;padding:0;border:0;border-top:1px solid #597160;background:#192a2a;border-radius:0;min-height:0}
+  .personal-sidebar>.personal-heading,.personal-sidebar>.my-gems,.personal-sidebar>.my-bonuses,.personal-sidebar>.my-equivalent,.personal-sidebar>.owned-gold,.personal-sidebar>.hand,.personal-sidebar>.collection-button{display:none}
+  .personal-sidebar .bank-panel{border:0;border-radius:0;background:none;padding:5px 4px 4px;display:grid;grid-template-columns:minmax(0,1fr) 112px;column-gap:6px;row-gap:3px}
+  .personal-sidebar .bank-panel>.section-label{grid-column:1/-1;margin:0;line-height:14px;font-size:10px}
+  .personal-sidebar .gem-bank{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin:0}
+  .personal-sidebar .token-button{min-height:44px;gap:0;justify-content:center;font-size:8px}
+  .personal-sidebar .token-button>span:last-child{display:none}
+  .personal-sidebar .token{width:31px;height:31px;box-shadow:none}
+  .personal-sidebar .token>.gem{width:21px;height:21px}
+  .personal-sidebar .token b{width:16px;height:16px;font-size:10px}
+  .personal-sidebar .token em{width:16px;height:16px;font-size:10px}
+  .personal-sidebar .token-button.selected .token{outline-offset:2px;transform:none}
+  .personal-sidebar .selection-status{grid-column:1;grid-row:3;align-self:center;margin:0;padding:0;font-size:9px;line-height:13px;gap:4px}
+  .personal-sidebar .selection-status .tiny-btn{min-height:36px;min-width:32px}
+  .personal-sidebar .bank-panel>.btn{grid-column:2;grid-row:3;margin:0;width:100%;height:36px;font-size:11px;padding:0 4px;gap:4px}
+  .personal-sidebar .ai-result,.personal-sidebar .ai-notice{display:none}
+  .mobile-inventory{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;align-items:center;border-top:1px solid #536b554d;padding:0 4px}
+  .mobile-inventory-toggle{min-height:44px;background:none;display:grid;grid-template-columns:minmax(0,1fr) 16px;gap:1px;color:#dfe7d5;text-align:left;padding:3px 0}
+  .mobile-inventory-toggle strong{font-size:11px;font-weight:500}
+  .mobile-inventory-toggle>span{grid-column:1/-1;font-size:9px;color:#a5b6ad;white-space:nowrap}
+  .mobile-inventory-toggle .icon{grid-column:2;grid-row:1;align-self:center;width:16px;height:16px;transform:rotate(-90deg)}
+  .inventory-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px}
+  .inventory-summary>span{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:10px}
+  .inventory-summary b{font-weight:500;white-space:nowrap}
+  .inventory-summary .gold{border-left:1px solid #c5a96955;color:var(--gold)}
+  .game-page .results{margin:0;padding:6px;gap:6px;flex-wrap:nowrap;flex-shrink:0;min-width:0}
+  .game-page .results>div{min-width:0;max-width:none;flex:1}
+  .game-page .results .eyebrow,.game-page .results .winner-icon{display:none}
+  .game-page .results h2{font-size:13px;margin:0;overflow-wrap:anywhere;line-height:1.4}
+  .game-page .results p{font-size:9px;line-height:1.5;overflow-wrap:anywhere}
+  .game-page .results>.btn{width:76px;min-width:76px;height:38px;padding:0 3px;font-size:10px;margin:0}
+  .at-table dialog{max-width:calc(100% - 16px);max-height:calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));padding:26px 16px 16px;border-radius:8px;overscroll-behavior:contain}
+  .at-table dialog h2{font-size:20px;margin:0 30px 12px 0}
+  .at-table dialog .dialog-close{width:38px;height:38px;top:0;right:0}
+  .at-table dialog .btn{min-height:40px}
+  .at-table dialog[data-kind="inventory"]{width:460px}
+  .at-table dialog[data-kind="inventory"] .section-label{margin-bottom:6px;font-size:12px}
+  .at-table dialog[data-kind="inventory"] .owned-bonuses>span{padding:8px 2px}
+  .at-table dialog[data-kind="inventory"] .collection-button{min-height:40px}
+  .at-table dialog[data-kind="card"]>.eyebrow{display:none}
+  .at-table .card-detail{gap:12px}
+  .at-table .card-detail>.dev-card{width:110px;aspect-ratio:.72}
+  .at-table .card-detail>div{flex:1;min-width:0}
+  .at-table .card-detail p{margin-top:6px;font-size:11px}
+  .at-table .payment-preview{gap:6px}
+  .at-table .payment-preview .gem{width:16px;height:16px}
+  .at-table .dialog-actions{margin-top:12px}
+  .at-table .custom-payment{margin-top:10px}
+  .at-table .custom-payment summary{min-height:32px;display:flex;align-items:center}
+  .at-table #toast{bottom:max(8px,env(safe-area-inset-bottom));font-size:11px;padding:8px 12px}
+}
+
+@media(orientation:landscape) and (max-height:649px) and (max-width:1199px){
+  .at-table .header{height:calc(32px + env(safe-area-inset-top));min-height:calc(32px + env(safe-area-inset-top))}
+  .at-table .brand{font-size:15px}
+  .mobile-table-tools,.mobile-table-tools .icon-btn{height:32px}
+  .game-page .game-layout{grid-template-columns:100px minmax(0,1fr) 206px;grid-template-rows:minmax(0,1fr);gap:7px}
+  .game-page .players-column{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:5px}
+  .players-column .player-panel{flex:0 0 48px}
+  .game-page .market-column{grid-column:2;grid-row:1;gap:4px}
+  .game-page .personal-sidebar{grid-column:3;grid-row:1;display:flex;flex-direction:column;padding:0 5px;border-top:0;border-left:1px solid #597160;background:none}
+  .market-column .noble{height:34px;padding:2px}
+  .market-column .noble-title b{font-size:12px;line-height:12px}
+  .market-column .noble-cost>span{font-size:8px}
+  .market-column .noble-cost .gem{width:8px;height:8px}
+  .market-column .market-row{grid-template-columns:20px repeat(4,minmax(0,1fr));gap:4px}
+  .market-column .prestige{font-size:19px;line-height:21px}
+  .market-column .bonus{width:19px;height:21px}
+  .market-column .bonus .gem{width:15px;height:15px}
+  .market-column .card-top{top:3px;left:4px;right:3px}
+  .market-column .card-bottom{bottom:3px;left:2px;right:2px}
+  .market-column .costs{gap:1px}
+  .market-column .cost{min-width:17px;height:15px;font-size:9px;padding:0 1px}
+  .market-column .cost .gem{width:8px;height:8px}
+  .personal-sidebar .bank-panel{grid-template-columns:minmax(0,1fr);padding:4px 0;row-gap:4px}
+  .personal-sidebar .bank-panel>.section-label{font-size:11px}
+  .personal-sidebar .gem-bank{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+  .personal-sidebar .token-button{min-height:40px}
+  .personal-sidebar .selection-status{grid-column:1;grid-row:3}
+  .personal-sidebar .selection-status .tiny-btn{min-height:26px}
+  .personal-sidebar .bank-panel>.btn{grid-column:1;grid-row:4;height:36px}
+  .mobile-inventory{grid-template-columns:minmax(0,1fr);gap:0;padding:2px 0}
+  .mobile-inventory-toggle{min-height:36px;grid-template-columns:minmax(0,1fr) 16px;align-items:center}
+  .mobile-inventory-toggle .icon{grid-column:2;grid-row:1}
+  .inventory-summary>span{flex-direction:row;gap:1px}
+  .inventory-summary .gem{width:12px;height:12px}
+  .at-table dialog[data-kind="inventory"]{width:620px;padding:12px 18px}
+  .at-table dialog[data-kind="inventory"] h2{font-size:16px;margin-bottom:4px}
+  .at-table dialog[data-kind="inventory"] .inventory-tabs{margin-bottom:6px}
+  .at-table dialog[data-kind="inventory"] .inventory-tabs button{min-height:34px;font-size:12px}
+  .at-table dialog[data-kind="inventory"] #inventory-content{min-height:0}
+  .at-table dialog[data-kind="inventory"] .my-bonuses,.at-table dialog[data-kind="inventory"] .my-equivalent{margin-top:5px}
+  .at-table dialog[data-kind="inventory"] .my-gems,.at-table dialog[data-kind="inventory"] .my-bonuses,.at-table dialog[data-kind="inventory"] .my-equivalent{display:grid;grid-template-columns:130px minmax(0,1fr);gap:10px;align-items:center}
+  .at-table dialog[data-kind="inventory"] .section-label{font-size:11px;display:block;margin:0}
+  .at-table dialog[data-kind="inventory"] .section-label>span{display:block;font-size:8px}
+  .at-table dialog[data-kind="inventory"] .owned-bonuses>span{padding:3px 2px}
+  .at-table dialog[data-kind="inventory"] .collection-button{min-height:32px;margin-top:4px;padding-top:4px}
+  .at-table dialog[data-kind="inventory"] .hand-cards{height:min(150px,calc(100dvh - 190px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));margin-top:6px}
+  .at-table dialog[data-kind="inventory"] .hand-cards .dev-card{height:100%;aspect-ratio:auto}
+  .at-table dialog[data-kind="inventory"] .empty-hand{min-height:0}
+  .at-table dialog[data-kind="card"]{width:620px;padding:12px 16px;display:none}
+  .at-table dialog[data-kind="card"][open]{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:6px 14px}
+  .at-table dialog[data-kind="card"] h2{grid-column:1/-1;font-size:17px;margin-bottom:2px}
+  .at-table dialog[data-kind="card"] .card-detail{grid-column:1;grid-row:2/5}
+  .at-table dialog[data-kind="card"] .card-detail>.dev-card{width:100px;aspect-ratio:.75}
+  .at-table dialog[data-kind="card"]>p{grid-column:2;margin:0;font-size:10px;line-height:1.6}
+  .at-table dialog[data-kind="card"] .custom-payment{grid-column:2;margin:0}
+  .at-table dialog[data-kind="card"] .dialog-actions{grid-column:2;margin-top:4px;flex-direction:column;gap:6px}
+  .at-table dialog[data-kind="card"] .payment-inputs{gap:3px;margin-top:4px}
+  .at-table dialog[data-kind="card"] .payment-inputs label{gap:2px}
+  .at-table dialog[data-kind="card"] .payment-inputs input{height:28px;font-size:11px}
+  .at-table dialog[data-kind="card"] .gold-payment-note{font-size:9px;margin:0;line-height:1.4}
+}
+
+@media(orientation:landscape) and (max-width:740px) and (max-height:649px){
+  .game-page .game-layout{grid-template-columns:84px minmax(0,1fr) 170px;gap:5px}
+  .market-column .cost{min-width:15px;height:14px;font-size:8px;padding:0}
+  .market-column .card-top{left:3px;right:2px}
+}
+
+@media(orientation:portrait) and (max-width:1099px){
+  .inventory-summary .summary-bonus{display:inline;color:#a5b6ad}
+}
