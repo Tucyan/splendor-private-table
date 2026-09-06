@@ -46,7 +46,7 @@ export function createGame(playerInputs, options = {}) {
     market,
     decks,
     nobles: shuffled(NOBLES).slice(0, players.length + 1),
-    turn: 0,
+    turn: options.turnOrder ? players.findIndex(p=>p.id===options.turnOrder[0]) : 0,
     round: 1,
     status: 'playing',
     finalRound: null,

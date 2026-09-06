@@ -6,6 +6,15 @@ const player = { id:'a',name:'A',gems:{white:0},bonuses:{},cards:[],reserved:[],
 const game = { players:[player,{...player,id:'b',reserved:[{id:'SECRET',level:1}]}],turn:0,round:1,market:{1:[],2:[],3:[]},decks:{1:['DECK_SECRET'],2:[],3:[]},nobles:[],bank:{white:4},pending:null };
 const actions = [{type:'take',gems:{white:1}}];
 
+test('AI receives the configured score and seat order with the same system prefix',()=>{
+  const messages=buildMessages({...game,finishScore:20,turnOrder:['b','a']},'a',actions);
+  const table=JSON.parse(messages[1].content).table;
+  assert.equal(table.finishScore,20);
+  assert.equal(table.seat,1);
+  assert.deepEqual(table.turnOrder,['b','a']);
+  assert.equal(messages[0].content,buildMessages(game,'a',actions)[0].content);
+});
+
 test('AI messages have a stable system prefix, current state only and hide private cards', () => {
   const messages=buildMessages(game,'a',actions);
   assert.equal(messages[0].role,'system');

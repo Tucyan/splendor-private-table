@@ -14,6 +14,26 @@ function setup(t,options={}){
   store.create(host);store.join(guest,store.room(host).code);
   return {store,host,guest,room:store.room(host)};
 }
+test('host settings start at the first reordered seat and complete an equal-turn final round',t=>{
+  const {store,host,guest,room}=setup(t);
+  assert.equal(room.settings.finishScore,15);
+  assert.throws(()=>store.settingsUpdate(guest,{finishScore:20}),/房主/);
+  assert.throws(()=>store.settingsUpdate(host,{finishScore:0}),/分数/);
+  assert.throws(()=>store.settingsUpdate(host,{turnOrder:[host.id,host.id]}),/顺序/);
+  store.settingsUpdate(host,{finishScore:20,turnOrder:[guest.id,host.id]});
+  store.start(host);
+  assert.equal(room.game.players[room.game.turn].id,guest.id);
+  assert.throws(()=>store.settingsUpdate(host,{finishScore:15}),/开始/);
+  room.game.players.find(p=>p.id===guest.id).score=19;
+  store.action(guest,{version:room.version,action:{type:'take',gems:{white:1}}});
+  assert.equal(room.game.finalRound,null);
+  store.action(host,{version:room.version,action:{type:'take',gems:{blue:1}}});
+  room.game.players.find(p=>p.id===guest.id).score=20;
+  store.action(guest,{version:room.version,action:{type:'take',gems:{green:1}}});
+  assert.equal(room.game.status,'playing');
+  store.action(host,{version:room.version,action:{type:'take',gems:{red:1}}});
+  assert.equal(room.game.status,'finished');
+});
 test('online state handles multiple tabs, disconnection and reconnection',t=>{
   const {store,host,guest}=setup(t);const a=new Stream(),b=new Stream();
   store.attach(guest,a);store.attach(guest,b);
