@@ -8,3 +8,6 @@
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
 .ai-result{font-size:10px;color:#85b09a;margin-top:20px}.ai-result .icon{width:14px;height:14px;margin-right:4px}
+.dev-card{transition:transform .2s,box-shadow .2s}.dev-card:hover{transform:translateY(-6px) rotate(-1deg);box-shadow:0 14px 28px #0003}.dev-card.card-enter{animation:cardEnter .45s ease both}.dev-card.card-purchased{animation:cardBuy .5s ease both}.resource-pulse{animation:resourcePulse .5s ease}
+@keyframes cardEnter{from{opacity:0;transform:translateY(-18px) scale(.94)}to{opacity:1;transform:none}}@keyframes cardBuy{50%{transform:scale(1.08);filter:brightness(1.25)}}@keyframes resourcePulse{50%{transform:scale(1.12);filter:brightness(1.3)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;transition:none!important}}

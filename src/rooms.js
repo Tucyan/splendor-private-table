@@ -36,6 +36,7 @@ export class RoomStore {
     return {me:{id:s.id,name:s.name},aiAvailable:!!this.aiKey,room:r?{
       code:r.code,hostId:r.hostId,version:r.version,createdAt:r.createdAt,
       players:r.players.map(p=>({id:p.id,name:p.name,ai:p.ai,mode:p.mode,online:p.ai||!!this.sessions.get(p.token)?.streams.size})),
+      settings:r.settings,
       game:r.game?viewGame(r.game,s.id):null,
       legalActions:r.game?legalActions(r.game,s.id):[],
       aiStatus:r.aiStatus,
@@ -51,7 +52,7 @@ export class RoomStore {
   create(s){
     if(this.room(s))fail('请先离开当前房间');if(this.rooms.size>=100)fail('房间数量已达上限');
     let code;do{code=String(randomInt(100000,1000000));}while(this.rooms.has(code));
-    const r={code,hostId:s.id,players:[this.human(s)],game:null,version:0,banned:new Set(),createdAt:Date.now(),updatedAt:Date.now(),aiStatus:null,aiTask:null};
+    const r={code,hostId:s.id,players:[this.human(s)],settings:{finishScore:15,turnOrder:[s.id]},game:null,version:0,banned:new Set(),createdAt:Date.now(),updatedAt:Date.now(),aiStatus:null,aiTask:null};
     this.rooms.set(code,r);s.roomCode=code;this.publish(r);
   }
   human(s){return {id:s.id,name:s.name,token:s.token,ai:false,mode:'human'};}
@@ -61,18 +62,21 @@ export class RoomStore {
     if(this.room(s)===r)return;
     if(this.room(s))fail('请先离开当前房间');if(r.banned.has(s.id))fail('你已被移出此房间');
     if(r.game)fail('对局已经开始，暂时不能加入');if(r.players.length>=4)fail('房间已满（最多 4 人）');
-    r.players.push(this.human(s));s.roomCode=code;r.version++;this.publish(r);
+    r.players.push(this.human(s));r.settings.turnOrder.push(s.id);s.roomCode=code;r.version++;this.publish(r);
   }
   addAI(s,mode='deepseek'){
     const r=this.requireHost(s);if(r.game)fail('请在准备大厅邀请 AI');if(r.players.length>=4)fail('房间已满');
     if(!['deepseek','local'].includes(mode))fail('未知 AI 类型');if(mode==='deepseek'&&!this.aiKey)fail('服务端尚未配置 DeepSeek 密钥');
     const names=['阿尔托','卢米','翡翠','奥罗'];const name=names.find(n=>!r.players.some(p=>p.name===n))||'宝石商人';
-    r.players.push({id:randomBytes(12).toString('hex'),name,ai:true,mode});r.version++;this.publish(r);
+    const id=randomBytes(12).toString('hex');r.players.push({id,name,ai:true,mode});r.settings.turnOrder.push(id);r.version++;this.publish(r);
   }
   start(s){
     const r=this.requireHost(s);if(r.game)fail('对局已经开始');if(r.players.length<2)fail('至少需要 2 位玩家，可以邀请 AI');
-    r.game=createGame(r.players.map(({id,name,ai})=>({id,name,ai})));r.version++;r.aiStatus=null;this.publish(r);
+    r.settings.turnOrder=r.settings.turnOrder.filter(id=>r.players.some(p=>p.id===id));
+    r.players.forEach(p=>{if(!r.settings.turnOrder.includes(p.id))r.settings.turnOrder.push(p.id);});
+    r.game=createGame(r.players.map(({id,name,ai})=>({id,name,ai})),r.settings);r.version++;r.aiStatus=null;this.publish(r);
   }
+  settingsUpdate(s,body={}){const r=this.requireHost(s);if(r.game)fail('对局开始后不能修改设置');const score=body.finishScore===undefined?r.settings.finishScore:Number(body.finishScore);if(!Number.isInteger(score)||score<5||score>30)fail('结束分数需为 5-30 的整数');const ids=r.players.map(p=>p.id);const order=body.turnOrder||r.settings.turnOrder;if(!Array.isArray(order)||order.length!==ids.length||new Set(order).size!==ids.length||order.some(id=>!ids.includes(id)))fail('轮换顺序无效');r.settings={finishScore:score,turnOrder:[...order]};r.version++;this.publish(r);}
   reset(s){const r=this.requireHost(s);if(r.game?.status!=='finished')fail('请完成本局后再返回大厅');this.cancelAI(r);r.game=null;r.aiStatus=null;r.version++;this.publish(r);}
   finish(s){const r=this.requireHost(s);const game=endGame(r.game);this.cancelAI(r);r.game=game;r.aiStatus=null;r.version++;this.publish(r);}
   kick(s,id){const r=this.requireHost(s);if(id===s.id)fail('不能踢出自己，请使用离开房间');this.remove(r,id,true);}
@@ -86,7 +90,7 @@ export class RoomStore {
       const bot={id:p.id,name:`托管·${p.name}`.slice(0,24),ai:true,mode:'local'};r.players[index]=bot;
       const gp=r.game.players.find(x=>x.id===id);gp.ai=true;gp.name=bot.name;
       r.game.log.push({playerId:id,text:`${p.name} 已离开，本地策略接管席位`});
-    }else r.players.splice(index,1);
+    }else {r.players.splice(index,1);r.settings.turnOrder=r.settings.turnOrder.filter(x=>x!==id);}
     if(r.hostId===id)r.hostId=r.players.find(x=>!x.ai)?.id||null;
     if(!r.players.some(x=>!x.ai)){this.rooms.delete(r.code);return;}
     r.version++;this.publish(r);

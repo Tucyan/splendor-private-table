@@ -33,13 +33,15 @@ function checkPlayers(players) {
   });
 }
 
-export function createGame(playerInputs) {
+export function createGame(playerInputs, options = {}) {
   const players = checkPlayers(playerInputs);
   const decks = Object.fromEntries(LEVELS.map((level) => [level, shuffled(CARDS_BY_LEVEL[level])]));
   const market = Object.fromEntries(LEVELS.map((level) => [level, decks[level].splice(0, 4)]));
   const gemCount = players.length === 2 ? 4 : players.length === 3 ? 5 : 7;
   return {
     players,
+    finishScore: Number.isInteger(options.finishScore) ? options.finishScore : 15,
+    turnOrder: (options.turnOrder || players.map(p=>p.id)).slice(),
     bank: Object.fromEntries([...COLORS.map((color) => [color, gemCount]), [GOLD, 5]]),
     market,
     decks,
@@ -160,7 +162,10 @@ function takeNoble(game, playerId, nobleId) {
 
 function finishTurn(game, playerId) {
   const activeIndex = game.turn;
-  if (game.finalRound !== null && activeIndex === game.players.length - 1) {
+  const order = game.turnOrder || game.players.map(p=>p.id);
+  const currentId = game.players[activeIndex]?.id;
+  const orderIndex = order.indexOf(currentId);
+  if (game.finalRound !== null && orderIndex === order.length - 1) {
     finishGame(game);
     return;
   }
@@ -170,8 +175,9 @@ function finishTurn(game, playerId) {
     finishGame(game);
     return;
   }
-  game.turn = (activeIndex + 1) % game.players.length;
-  if (game.turn === 0) game.round += 1;
+  const nextId = order[(orderIndex + 1) % order.length];
+  game.turn = game.players.findIndex(p=>p.id===nextId);
+  if (orderIndex === order.length - 1) game.round += 1;
   game.nobleAwardedThisTurn = false;
   addLog(game, playerId, '回合结束');
 }
@@ -200,7 +206,7 @@ function endAction(game, playerId) {
     if (game.finalRound === null && player.score >= 15) game.finalRound = game.turn;
     return;
   }
-  if (game.finalRound === null && player.score >= 15) game.finalRound = game.turn;
+  if (game.finalRound === null && player.score >= game.finishScore) game.finalRound = game.turn;
   finishTurn(game, playerId);
 }
 
@@ -280,7 +286,7 @@ function nobleAction(game, playerId, action) {
   if (game.pending?.type !== 'noble' || !game.pending.nobleIds.includes(action.nobleId)) throw new Error('贵族选择无效');
   game.pending = null;
   takeNoble(game, playerId, action.nobleId);
-  if (game.finalRound === null && player.score >= 15) game.finalRound = game.turn;
+  if (game.finalRound === null && player.score >= game.finishScore) game.finalRound = game.turn;
   if (sum(player.gems) > 10) game.pending = { type: 'discard', count: sum(player.gems) - 10 };
   else finishTurn(game, playerId);
 }
