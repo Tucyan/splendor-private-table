@@ -15,6 +15,8 @@ CLONE_ATTEMPTS="${SPLENDOR_CLONE_ATTEMPTS:-3}"
 CLONE_RETRY_DELAY="${SPLENDOR_CLONE_RETRY_DELAY:-3}"
 HEALTH_ATTEMPTS="${SPLENDOR_HEALTH_ATTEMPTS:-30}"
 HEALTH_RETRY_DELAY="${SPLENDOR_HEALTH_RETRY_DELAY:-1}"
+GIT_LOW_SPEED_LIMIT="${SPLENDOR_GIT_LOW_SPEED_LIMIT:-1024}"
+GIT_LOW_SPEED_TIME="${SPLENDOR_GIT_LOW_SPEED_TIME:-30}"
 UPDATE_SERVICE_UNIT=1
 SKIP_TESTS=0
 LOCK_DIR="/var/lock/splendor-update.lock.d"
@@ -49,7 +51,10 @@ clone_with_retry() {
   local repo=$1 branch=$2 parent=$3 attempt candidate
   for ((attempt=1; attempt<=CLONE_ATTEMPTS; attempt++)); do
     candidate="$(mktemp -d "$parent/.splendor-update.XXXXXX")"
-    if git -c http.version=HTTP/1.1 clone --depth 1 --branch "$branch" "$repo" "$candidate"; then
+    if git -c http.version=HTTP/1.1 \
+      -c "http.lowSpeedLimit=$GIT_LOW_SPEED_LIMIT" \
+      -c "http.lowSpeedTime=$GIT_LOW_SPEED_TIME" \
+      clone --depth 1 --branch "$branch" "$repo" "$candidate"; then
       TEMP_DIR=$candidate
       return 0
     fi
@@ -98,6 +103,7 @@ done
 [[ $SERVICE =~ ^[A-Za-z0-9_.@-]+$ ]] || die "服务名不安全：$SERVICE"
 [[ -n $BRANCH && -n $REPO_URL ]] || die "仓库和分支不能为空"
 [[ $CLONE_ATTEMPTS =~ ^[1-9][0-9]*$ && $HEALTH_ATTEMPTS =~ ^[1-9][0-9]*$ ]] || die "重试次数必须为正整数"
+[[ $GIT_LOW_SPEED_LIMIT =~ ^[1-9][0-9]*$ && $GIT_LOW_SPEED_TIME =~ ^[1-9][0-9]*$ ]] || die "Git 低速阈值必须为正整数"
 
 for command in git systemctl curl mktemp mv date cmp install grep getent rm; do
   command -v "$command" >/dev/null 2>&1 || die "缺少命令：$command"

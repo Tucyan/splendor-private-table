@@ -123,9 +123,9 @@ cd /opt/splendor
 sudo bash deploy/update.sh
 ```
 
-脚本会从 GitHub 拉取 `main` 的最新提交，在临时目录运行 Node 语法检查和测试，停止服务后切换目录，保留 `/etc/splendor.env`，更新 systemd 单元，启动服务并等待健康接口就绪。GitHub TLS 连接临时中断时默认重试 3 次；服务启动后健康检查默认等待最多约 30 秒。旧目录会保存为 `/opt/splendor.backup-YYYYMMDD-HHMMSS`；更新失败时会尝试恢复上一版，并保留失败目录。服务重启会清空当前房间。
+脚本会从 GitHub 拉取 `main` 的最新提交，在临时目录运行 Node 语法检查和测试，停止服务后切换目录，保留 `/etc/splendor.env`，更新 systemd 单元，启动服务并等待健康接口就绪。GitHub TLS 连接临时中断时默认重试 3 次；下载低于 1 KiB/s 持续 30 秒会主动结束当前连接并进入下一次重试。服务启动后健康检查默认等待最多约 30 秒。旧目录会保存为 `/opt/splendor.backup-YYYYMMDD-HHMMSS`；更新失败时会尝试恢复上一版，并保留失败目录。服务重启会清空当前房间。
 
-常用选项：`--branch NAME`、`--health-url URL`、`--skip-tests`、`--keep-service-unit`。也可以使用 `SPLENDOR_NODE=/path/to/node`、`SPLENDOR_OWNER=user:group`、`SPLENDOR_CLONE_ATTEMPTS=3` 和 `SPLENDOR_HEALTH_ATTEMPTS=30` 覆盖默认配置。脚本需要 root 权限，且一次只允许一个更新任务运行。
+常用选项：`--branch NAME`、`--health-url URL`、`--skip-tests`、`--keep-service-unit`。也可以使用 `SPLENDOR_NODE=/path/to/node`、`SPLENDOR_OWNER=user:group`、`SPLENDOR_CLONE_ATTEMPTS=3`、`SPLENDOR_GIT_LOW_SPEED_TIME=30` 和 `SPLENDOR_HEALTH_ATTEMPTS=30` 覆盖默认配置。脚本需要 root 权限，且一次只允许一个更新任务运行。
 
 ```sh
 sudo chown -R splendor:splendor /opt/splendor

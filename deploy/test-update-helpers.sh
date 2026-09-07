@@ -6,8 +6,10 @@ SPLENDOR_UPDATE_TESTING=1 source "$(dirname "$0")/update.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 clone_calls=0
+git_arguments=""
 git() {
   clone_calls=$((clone_calls + 1))
+  git_arguments="$*"
   if (( clone_calls < 3 )); then return 128; fi
   mkdir -p "${@: -1}"
 }
@@ -17,6 +19,7 @@ CLONE_RETRY_DELAY=0
 TEMP_DIR=""
 clone_with_retry "https://example.invalid/repo.git" main "/tmp"
 [[ $clone_calls -eq 3 ]] || fail "clone should retry twice before success"
+[[ $git_arguments == *"http.lowSpeedLimit=1024"* && $git_arguments == *"http.lowSpeedTime=30"* ]] || fail "clone should stop a stalled low-speed connection"
 [[ -d $TEMP_DIR ]] || fail "successful clone directory was not retained"
 rmdir "$TEMP_DIR"
 
