@@ -116,6 +116,17 @@ sudo -u splendor git pull --ff-only
 
 **当前服务器是压缩包安装，没有 `.git`，不能直接执行 `git pull`。** 从 GitHub 下载新版代码或上传更新包到独立目录，检查目录结构并备份旧应用后再替换 `/opt/splendor`。不要把 `.env` 或真实密钥放进仓库；保留独立的 `/etc/splendor.env`。更新后执行：
 
+仓库已提供自动更新脚本。公开仓库的服务器首次安装或现有压缩包安装都可以使用：
+
+```sh
+cd /opt/splendor
+sudo bash deploy/update.sh
+```
+
+脚本会从 GitHub 拉取 `main` 的最新提交，在临时目录运行 Node 语法检查和测试，停止服务后切换目录，保留 `/etc/splendor.env`，更新 systemd 单元，启动服务并检查健康接口。旧目录会保存为 `/opt/splendor.backup-YYYYMMDD-HHMMSS`；更新失败时会尝试恢复上一版，并保留失败目录。服务重启会清空当前房间。
+
+常用选项：`--branch NAME`、`--health-url URL`、`--skip-tests`、`--keep-service-unit`。也可以使用 `SPLENDOR_NODE=/path/to/node` 和 `SPLENDOR_OWNER=user:group` 覆盖默认路径。脚本需要 root 权限，且一次只允许一个更新任务运行。
+
 ```sh
 sudo chown -R splendor:splendor /opt/splendor
 sudo systemctl restart splendor
