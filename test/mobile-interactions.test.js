@@ -14,6 +14,24 @@ test('market page follows the closest horizontal snap position',async()=>{
   assert.equal(marketViewIndex(100,0,3),0);
 });
 
+test('mobile card information only opens from a long press',async()=>{
+  const {shouldShowContextTooltip}=await mobileModule;
+  assert.equal(typeof shouldShowContextTooltip,'function');
+  assert.equal(shouldShowContextTooltip({mobile:true,trigger:'hover',pointerType:'mouse'}),false);
+  assert.equal(shouldShowContextTooltip({mobile:true,trigger:'focus'}),false);
+  assert.equal(shouldShowContextTooltip({mobile:true,trigger:'longpress'}),true);
+  assert.equal(shouldShowContextTooltip({mobile:false,trigger:'hover',pointerType:'mouse'}),true);
+});
+
+test('a deliberate horizontal swipe changes exactly one mobile market page',async()=>{
+  const {swipePageIndex}=await mobileModule;
+  assert.equal(typeof swipePageIndex,'function');
+  assert.equal(swipePageIndex(0,-80,3),1);
+  assert.equal(swipePageIndex(1,80,3),0);
+  assert.equal(swipePageIndex(2,-80,3),2);
+  assert.equal(swipePageIndex(1,20,3),1);
+});
+
 test('long press triggers once and marks the following click for suppression',async()=>{
   const {createLongPressTracker}=await mobileModule;
   assert.equal(typeof createLongPressTracker,'function');
@@ -38,7 +56,8 @@ test('moving a finger cancels long press without suppressing a normal tap',async
   assert.equal(tracker.finish(),null);
 });
 
-test('the mobile market carousel lays out its pages on the horizontal axis',async()=>{
+test('the mobile market carousel reserves horizontal swipes for its page controller',async()=>{
   const css=await readFile(new URL('../public/mobile-table.css',import.meta.url),'utf8');
   assert.match(css,/\.market-column \.market\{[^}]*flex-direction:row/);
+  assert.match(css,/\.market-column \.market\{[^}]*touch-action:pan-y/);
 });

@@ -2,7 +2,7 @@ import {captureTableEffects} from './table-effects.js';
 import {gem} from './gems.js';
 import {bindRoomSettings} from './room-settings.js';
 import {canAffordCard,purchaseGap,discountedCost,nobleGap} from './player-view.js';
-import {createLongPressTracker,marketViewIndex} from './mobile-interactions.js';
+import {createLongPressTracker,marketViewIndex,shouldShowContextTooltip,swipePageIndex} from './mobile-interactions.js';
 
 const basePath=new URL('.',import.meta.url).pathname;
 const appPath=(path='')=>basePath+path.replace(/^\/+/, '');
@@ -147,6 +147,29 @@ function showMobileMarketView(index,smooth=true){
 function bindMobileMarket(){
   const market=$('[data-market-carousel]');if(!market)return;
   requestAnimationFrame(()=>showMobileMarketView(mobileMarketView,false));
+  let swipe=null;
+  const endSwipe=event=>{
+    if(!swipe||event.pointerId!==swipe.id)return;
+    const active=swipe;swipe=null;
+    if(active.horizontal)showMobileMarketView(swipePageIndex(mobileMarketView,event.clientX-active.x,3));
+  };
+  market.addEventListener('pointerdown',event=>{
+    if(event.pointerType==='touch')swipe={id:event.pointerId,x:event.clientX,y:event.clientY,left:market.scrollLeft,horizontal:false};
+  });
+  market.addEventListener('pointermove',event=>{
+    if(!swipe||event.pointerId!==swipe.id)return;
+    const dx=event.clientX-swipe.x,dy=event.clientY-swipe.y;
+    if(!swipe.horizontal){
+      if(Math.hypot(dx,dy)<8)return;
+      if(Math.abs(dx)<=Math.abs(dy)){swipe=null;return;}
+      swipe.horizontal=true;
+      longPressTracker.cancel();pressedElement?.classList.remove('long-press-active');pressedElement=null;longPressShown=false;
+      market.setPointerCapture?.(event.pointerId);
+    }
+    event.preventDefault();market.scrollLeft=swipe.left-dx;
+  },{passive:false});
+  market.addEventListener('pointerup',endSwipe);
+  market.addEventListener('pointercancel',()=>{swipe=null;});
   market.addEventListener('scroll',()=>{
     clearTimeout(marketScrollTimer);marketScrollTimer=setTimeout(()=>{
       mobileMarketView=marketViewIndex(market.scrollLeft,market.clientWidth,3);updateMarketViewTabs();
@@ -223,7 +246,7 @@ function showNobleTooltip(element){
 function showContextTooltip(element){return element.dataset.card?showCardTooltip(element):showNobleTooltip(element);}
 const longPressTracker=createLongPressTracker({onTrigger:element=>{longPressShown=showContextTooltip(element);if(longPressShown)element.classList.add('long-press-active');}});
 document.addEventListener('pointerover',event=>{
-  if(event.pointerType==='touch')return;
+  if(!shouldShowContextTooltip({mobile:mobileTableLayout,trigger:'hover',pointerType:event.pointerType}))return;
   const target=event.target.closest('[data-card],[data-noble-info]');
   if(target&&!target.contains(event.relatedTarget))showContextTooltip(target);
 });
@@ -231,7 +254,7 @@ document.addEventListener('pointerout',event=>{
   if(event.pointerType==='touch')return;
   if(tooltipTarget?.contains(event.target)&&!tooltipTarget.contains(event.relatedTarget))hideCardTooltip();
 });
-document.addEventListener('focusin',event=>{const target=event.target.closest('[data-card],[data-noble-info]');if(target)showContextTooltip(target);});
+document.addEventListener('focusin',event=>{if(!shouldShowContextTooltip({mobile:mobileTableLayout,trigger:'focus'}))return;const target=event.target.closest('[data-card],[data-noble-info]');if(target)showContextTooltip(target);});
 document.addEventListener('focusout',hideCardTooltip);
 document.addEventListener('pointerdown',event=>{
   if(event.pointerType!=='touch')return;
