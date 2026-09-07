@@ -17,6 +17,15 @@ export function purchaseGap(player,card){
   return {colors,goldUsed,remaining:total-goldUsed};
 }
 
+export function nobleGap(player,noble){
+  const colors={};
+  for(const color of COLORS){
+    const missing=Math.max(0,(noble.cost[color]||0)-(player.bonuses[color]||0));
+    if(missing)colors[color]=missing;
+  }
+  return {colors,remaining:Object.values(colors).reduce((a,b)=>a+b,0)};
+}
+
 export function canAffordCard(player,card){
   return !!player&&purchaseGap(player,card).remaining===0;
 }

@@ -1,7 +1,8 @@
 import {captureTableEffects} from './table-effects.js';
 import {gem} from './gems.js';
 import {bindRoomSettings} from './room-settings.js';
-import {canAffordCard,purchaseGap,discountedCost} from './player-view.js';
+import {canAffordCard,purchaseGap,discountedCost,nobleGap} from './player-view.js';
+import {createLongPressTracker,marketViewIndex} from './mobile-interactions.js';
 
 const basePath=new URL('.',import.meta.url).pathname;
 const appPath=(path='')=>basePath+path.replace(/^\/+/, '');
@@ -10,17 +11,20 @@ const $=s=>document.querySelector(s);
 const COLORS=['white','blue','green','red','black'];
 const ALL=[...COLORS,'gold'];
 const NAMES={white:'钻石',blue:'蓝宝石',green:'祖母绿',red:'红宝石',black:'缟玛瑙',gold:'黄金'};
+const MOBILE_TABLE_QUERY='(max-width:1099px), (max-width:1199px) and (max-height:649px)';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sum=o=>Object.values(o||{}).reduce((a,b)=>a+b,0);
 const storage={get(k){try{return localStorage.getItem(k);}catch{return null;}},set(k,v){try{localStorage.setItem(k,v);}catch{}}};
 let state=null,connected=false,busy=false,selection={},source,dialogKind=null,lastVersion=null;
 let hintCode=new URLSearchParams(location.search).get('room')||'';
 let toastTimer;
-let inventoryTab='resources';
+let mobileMarketView=0,marketScrollTimer=null,suppressLongPressClick=null,longPressShown=false;
+let mobileTableLayout=matchMedia(MOBILE_TABLE_QUERY).matches;
 let scoreDraft=null;
 let settingsExpanded=false;
 
 function icon(name){const shapes={arrow:'M5 12h14m-6-6 6 6-6 6',copy:'M9 9h11v12H9zM15 9V3H3v12h6',users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m11 10v-2a4 4 0 0 0-3-4m0-12a4 4 0 0 1 0 8',bot:'M5 7h14v13H5zM12 3v4M8 12h1m6 0h1M9 16h6M2 11v5m20-5v5',crown:'M3 7l5 4 4-7 4 7 5-4-3 12H6z',close:'m6 6 12 12M6 18 18 6',book:'M12 5v16M12 5C8 2 4 3 2 4v15c5-2 8-1 10 2 2-3 5-4 10-2V4c-3-1-6-2-10 1',exit:'M9 4H4v16h5m4-12 4 4-4 4m-5-4h13',check:'m5 12 4 4 10-10'};return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${shapes[name]||shapes.arrow}"/></svg>`;}
+function nobleCardIcon(color,size=14){return `<svg class="noble-card-icon ${color}" width="${size}" height="${size}" viewBox="0 0 14 14" aria-hidden="true"><rect x="2.25" y=".75" width="9.5" height="12.5" rx="1.35" fill="currentColor"/><path d="M4 3.3h6M4 5.25h4.4M4 10.8h6" fill="none" stroke="#fff" stroke-width=".7" opacity=".42"/></svg>`;}
 function toast(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),4200);}
 
 async function api(path,body){
@@ -34,6 +38,7 @@ function accept(next){
   const key=next.room?`${next.room.code}:${next.room.version}`:'home';
   if(key!==lastVersion){selection={};lastVersion=key;if(dialogKind==='card')closeDialog();}
   const removed=state?.room&&!next.room;
+  if(screenChanged||state?.room?.code!==next.room?.code)mobileMarketView=0;
   settingsControls.cancel();
   if(state?.room?.code!==next.room?.code||next.room?.game)settingsExpanded=false;
   if(state?.room?.code!==next.room?.code||next.room?.game||next.room?.hostId!==next.me.id)scoreDraft=null;
@@ -89,18 +94,22 @@ const settingsControls=bindRoomSettings({canEdit:canEditSettings,
   onScoreSave:()=>saveSettings({finishScore:Number($('#finish-score').value)},'结束分数已保存'),
 });
 function playerPanel(p){const r=state.room,g=r.game,info=r.players.find(x=>x.id===p.id),me=p.id===state.me.id,current=g.status==='playing'&&g.players[g.turn].id===p.id;return `<article data-player-id="${esc(p.id)}" class="player-panel ${me?'is-me':''} ${current?'current':''}"><div class="player-head"><span class="avatar ${p.ai?'ai-avatar':''}">${p.ai?icon('bot'):esc(p.name.slice(0,1))}</span><div class="player-name"><strong title="${esc(p.name)}">${esc(p.name)} ${me?'<small>你</small>':''}</strong><span><i class="online-dot ${info?.online?'':'off'}"></i>${info?.online?'在线':'已离线'}${p.ai?' · AI':''}</span></div><span class="player-score" aria-label="${esc(p.name)}，${p.score}分">${p.score}<small>分</small></span>${r.hostId===state.me.id&&!me&&!p.ai?`<button class="tiny-btn player-kick" data-kick="${p.id}" title="移出玩家" aria-label="移出${esc(p.name)}">×</button>`:''}</div></article>`;}
-function nobleHTML(n){const g=state.room.game,eligible=g.pending?.type==='noble'&&g.pending.nobleIds.includes(n.id)&&g.players[g.turn].id===state.me.id;return `<button class="noble ${eligible?'eligible':''}" ${eligible?`data-noble="${n.id}"`:''} aria-label="贵族，3分，需要${COLORS.filter(c=>n.cost[c]).map(c=>NAMES[c]+n.cost[c]+'折扣').join('、')}"><span class="noble-portrait">${icon('crown')}</span><div><span class="noble-title">贵族来访 <b>3<span> 分</span></b></span><div class="noble-cost">${COLORS.filter(c=>n.cost[c]).map(c=>`<span>${gem(c,14)}${n.cost[c]}</span>`).join('')}</div></div></button>`;}
+function nobleHTML(n){const g=state.room.game,eligible=g.pending?.type==='noble'&&g.pending.nobleIds.includes(n.id)&&g.players[g.turn].id===state.me.id;return `<button class="noble ${eligible?'eligible':''}" data-noble-info="${esc(n.id)}" ${eligible?`data-noble="${esc(n.id)}"`:''} aria-label="贵族，3分，需要${COLORS.filter(c=>n.cost[c]).map(c=>NAMES[c]+n.cost[c]+'张永久卡').join('、')}"><span class="noble-portrait">${icon('crown')}</span><div><span class="noble-title">贵族来访 <b>3<span> 分</span></b></span><div class="noble-cost">${COLORS.filter(c=>n.cost[c]).map(c=>`<span>${nobleCardIcon(c,14)}${n.cost[c]}</span>`).join('')}</div></div></button>`;}
 function resourceRow(values,label){return `<div class="owned-bonuses">${COLORS.map(c=>`<span title="${NAMES[c]}${label} ${values[c]||0}" aria-label="${NAMES[c]}${label} ${values[c]||0}">${gem(c,20)}<b>${values[c]||0}</b></span>`).join('')}</div>`;}
 function personalResources(me){return `<section class="my-gems"><div class="section-label">拥有的宝石 <span>筹码 ${sum(me.gems)} / 10（含黄金）</span></div>${resourceRow(me.gems,'持有')}</section>
     <section class="my-bonuses"><div class="section-label">永久折扣 <span>每次购买均生效</span></div>${resourceRow(me.bonuses,'折扣')}</section>
     <section class="my-equivalent"><div class="section-label">等效宝石数 <span>持有 + 永久折扣</span></div>${resourceRow(Object.fromEntries(COLORS.map(c=>[c,(me.gems[c]||0)+(me.bonuses[c]||0)])),'等效')}</section>
     <div class="owned-gold">${gem('gold',20)}<span>黄金（万能）</span><strong>${me.gems.gold||0}</strong><small>单独计算，不计入等效数</small></div>`;}
 function personalHand(me){return `<section class="hand"><div class="section-label">预留手牌 <span>${me.reserved.length} / 3 · 仅自己可见</span></div><div class="hand-cards">${me.reserved.map(c=>cardHTML(c)).join('')||'<div class="empty-hand">暂无预留手牌</div>'}</div></section>`;}
-function inventoryDialog(tab=inventoryTab){
-  if(!state.room?.game)return closeDialog();
-  inventoryTab=tab;
-  const me=state.room.game.players.find(p=>p.id===state.me.id);
-  openDialog(`<h2>我的宝石库 <small>${me.score} 分</small></h2><div class="inventory-tabs" role="tablist" aria-label="宝石库视图">${[['resources','宝石与折扣'],['hand',`预留手牌 ${me.reserved.length}/3`]].map(([id,label])=>`<button role="tab" id="inventory-${id}" aria-controls="inventory-content" aria-selected="${tab===id}" data-inventory="${id}">${label}</button>`).join('')}</div><div id="inventory-content" role="tabpanel" aria-labelledby="inventory-${tab}">${tab==='hand'?personalHand(me):personalResources(me)}</div><button class="collection-button" data-do="collection"><span>已购发展卡</span><strong>${me.cards.length} 张</strong><span>查看全部 ↗</span></button>`,'inventory');
+function inventorySummary(me){return `<div class="inventory-summary" aria-label="持有宝石与永久折扣">${ALL.map(c=>`<span class="${c}" aria-label="${NAMES[c]}持有${me.gems[c]||0}${c==='gold'?'':`，永久折扣${me.bonuses[c]||0}`}">${gem(c,16)}<b>${me.gems[c]||0}${c!=='gold'&&me.bonuses[c]>0?`<span class="summary-bonus">+${me.bonuses[c]}</span>`:''}</b></span>`).join('')}</div>`;}
+function mobileReservedView(me){return `<section class="market-view mobile-market-panel reserved-market-view" id="market-view-1" aria-label="预留手牌"><div class="mobile-panel-heading"><strong>预留手牌</strong><span>${me.reserved.length} / 3 · 仅自己可见</span></div><div class="hand-cards">${me.reserved.map(c=>cardHTML(c)).join('')||'<div class="empty-hand">暂无预留手牌</div>'}</div></section>`;}
+function mobileResourcesView(me){return `<section class="market-view mobile-market-panel resources-market-view" id="market-view-2" aria-label="宝石库详情"><div class="mobile-panel-heading"><strong>宝石库详情</strong><span>${me.score} 分声望</span></div><div class="mobile-resource-scroll">${personalResources(me)}<button class="collection-button" data-do="collection"><span>已购发展卡</span><strong>${me.cards.length} 张</strong><span>查看全部 ↗</span></button></div></section>`;}
+function marketViewTabs(me){return `<div class="market-view-tabs" role="tablist" aria-label="牌桌视图">${[['市场',''],['预留',` ${me.reserved.length}/3`],['宝石库','']].map(([label,count],index)=>`<button role="tab" aria-controls="market-view-${index}" aria-selected="${mobileMarketView===index}" data-market-view="${index}">${label}${count}</button>`).join('')}</div>`;}
+function marketRows(g){return [3,2,1].map(level=>`<div class="market-row"><button class="deck level-${level}" data-deck="${level}" ${g.decks[level]===0?'disabled':''} aria-label="盲预留${level}级牌，剩余${g.decks[level]}张"><span class="deck-level">${'ⅠⅡⅢ'[level-1]}</span>${gem('gold',30)}<span>${g.decks[level]} <small>张</small></span></button>${g.market[level].map(c=>cardHTML(c)).join('')}${Array.from({length:Math.max(0,4-g.market[level].length)},()=>'<div class="card-empty">牌库已空</div>').join('')}</div>`).join('');}
+function marketArea(g,me){
+  const rows=marketRows(g);
+  if(!mobileTableLayout)return `<div class="market">${rows}</div>`;
+  return `${marketViewTabs(me)}<div class="market" data-market-carousel><section class="market-view market-board" id="market-view-0" aria-label="发展卡市场">${rows}</section>${mobileReservedView(me)}${mobileResourcesView(me)}</div>`;
 }
 function mobileTableTools(){return `<div class="mobile-table-tools"><button class="icon-btn" data-do="history" aria-label="对局记录" title="对局记录">${icon('book')}</button><button class="icon-btn" data-do="table-menu" aria-label="房间菜单" title="房间菜单">${icon('users')}</button></div>`;}
 function personalSidebar(){
@@ -111,20 +120,38 @@ function personalSidebar(){
     ${personalResources(me)}
     ${personalHand(me)}
     <button class="collection-button" data-do="collection"><span>已购发展卡</span><strong>${me.cards.length} 张</strong><span>查看全部 ↗</span></button>
-    <div class="mobile-inventory"><button class="mobile-inventory-toggle" data-do="inventory" aria-haspopup="dialog"><strong>我的宝石库</strong><span>筹码 ${sum(me.gems)}/10 · 手牌 ${me.reserved.length}/3</span>${icon('arrow')}</button><div class="inventory-summary" aria-label="持有宝石与永久折扣">${ALL.map(c=>`<span class="${c}" aria-label="${NAMES[c]}持有${me.gems[c]||0}${c==='gold'?'':`，永久折扣${me.bonuses[c]||0}`}">${gem(c,16)}<b>${me.gems[c]||0}${c!=='gold'&&me.bonuses[c]>0?`<span class="summary-bonus">+${me.bonuses[c]}</span>`:''}</b></span>`).join('')}</div></div>
+    <div class="mobile-inventory">${inventorySummary(me)}</div>
   </aside>`;
 }
 function gamePage(){
-  const r=state.room,g=r.game,current=g.players[g.turn],myTurn=current?.id===state.me.id&&g.status==='playing';
+  const r=state.room,g=r.game,me=g.players.find(p=>p.id===state.me.id),current=g.players[g.turn],myTurn=current?.id===state.me.id&&g.status==='playing';
   return `<main class="game-page">${roomTop()}${g.status==='finished'?results():`<div class="turn-banner ${myTurn?'your-turn':''}"><span>${myTurn?'✦':'◷'}</span><strong>${myTurn?(g.pending?.type==='noble'?'请选择一位贵族':g.pending?.type==='discard'?`请返还 ${g.pending.count} 枚筹码`:'轮到你了'):`${esc(current.name)} 的回合`}</strong><span>${g.pending?.type==='discard'?`需返还 ${g.pending.count} 枚筹码`:g.pending?.type==='noble'?'请选择一位贵族':myTurn?'挑选宝石，或点击卡牌进行购买与预留。':current.ai?'正在思考下一步…':'好生意，值得片刻等待。'}</span>${g.finalRound!==null?'<b class="final-tag">最后一轮</b>':''}</div>`}
     <div class="game-layout">
       <aside class="players-column" style="--player-count:${g.players.length}"><div class="section-label">桌上玩家 <span>${g.players.length} 位</span></div>${(g.turnOrder||g.players.map(p=>p.id)).map(id=>playerPanel(g.players.find(p=>p.id===id))).join('')}<button class="collection-button log-button" data-do="history"><span>对局记录</span><span>查看 ↗</span></button><div class="latest-action">${g.log.slice(-1).map(l=>esc(l.text)).join('')||'商路铺开，好局开始。'}</div></aside>
       <section class="market-column"><div class="section-label">贵族沙龙 <span>满足折扣，自动来访</span></div><div class="nobles">${g.nobles.map(nobleHTML).join('')}</div>
         <div class="market-heading section-label">发展卡市场 <span><i class="available-dot"></i> 高亮卡牌资源足够 · 悬停查看缺口</span></div>
-        <div class="market">${[3,2,1].map(level=>`<div class="market-row"><button class="deck level-${level}" data-deck="${level}" ${g.decks[level]===0?'disabled':''} aria-label="盲预留${level}级牌，剩余${g.decks[level]}张"><span class="deck-level">${'ⅠⅡⅢ'[level-1]}</span>${gem('gold',30)}<span>${g.decks[level]} <small>张</small></span></button>${g.market[level].map(c=>cardHTML(c)).join('')}${Array.from({length:Math.max(0,4-g.market[level].length)},()=>'<div class="card-empty">牌库已空</div>').join('')}</div>`).join('')}</div>
+        ${marketArea(g,me)}
       </section>
       ${personalSidebar()}
     </div>${mobileTableTools()}</main>`;
+}
+
+function updateMarketViewTabs(){
+  document.querySelectorAll('[data-market-view]').forEach(tab=>tab.setAttribute('aria-selected',Number(tab.dataset.marketView)===mobileMarketView));
+}
+function showMobileMarketView(index,smooth=true){
+  mobileMarketView=Math.max(0,Math.min(2,index));updateMarketViewTabs();
+  const market=$('[data-market-carousel]');
+  if(market?.clientWidth)market.scrollTo({left:market.clientWidth*mobileMarketView,behavior:smooth?'smooth':'auto'});
+}
+function bindMobileMarket(){
+  const market=$('[data-market-carousel]');if(!market)return;
+  requestAnimationFrame(()=>showMobileMarketView(mobileMarketView,false));
+  market.addEventListener('scroll',()=>{
+    clearTimeout(marketScrollTimer);marketScrollTimer=setTimeout(()=>{
+      mobileMarketView=marketViewIndex(market.scrollLeft,market.clientWidth,3);updateMarketViewTabs();
+    },70);
+  },{passive:true});
 }
 
 function bankPanel(){
@@ -136,7 +163,7 @@ function bankPanel(){
   return `<section class="bank-panel"><div class="section-label">${discard?'返还筹码':'拿取宝石'}<span>${discard?`需还 ${g.pending.count} 枚`:sum(g.bank)+' 枚'}</span></div>
     <div class="gem-bank">${ALL.map(c=>`<button class="token-button ${c} ${selection[c]?'selected':''}" data-gem="${c}" ${!myTurn||(!discard&&g.pending)||(!discard&&c==='gold')||!pool[c]?'disabled':''} aria-label="${discard?'返还':'选择'}${NAMES[c]}，剩余${pool[c]}，已选${selection[c]||0}"><span class="token">${gem(c,32)}<b>${pool[c]}</b>${selection[c]?`<em>${selection[c]}</em>`:''}</span><span>${NAMES[c]}</span></button>`).join('')}</div>
     <div class="selection-status"><span>${discard?'选择要返还的筹码':pass?'本回合可手动跳过':picked?`已选择 ${picked} 枚宝石`:'选择你需要的宝石'}</span><button class="tiny-btn" data-do="clear-gems" ${!picked?'disabled':''}>重选</button></div>
-    ${pass?'<button class="btn primary full" data-do="pass">跳过本回合 →</button>':`<button class="btn primary full" data-do="take" ${!valid||!myTurn?'disabled':''}>${discard?'确认返还':'拿取宝石'} ${icon('arrow')}</button>`}
+    ${pass?'<button class="btn primary full bank-action" data-do="pass"><span class="action-label-full">跳过本回合</span><span class="action-label-compact">跳过</span> →</button>':`<button class="btn primary full bank-action" data-do="take" ${!valid||!myTurn?'disabled':''}><span class="action-label-full">${discard?'确认返还':'拿取宝石'}</span><span class="action-label-compact">${discard?'返还':'拿取'}</span> ${icon('arrow')}</button>`}
   </section>`;
 }
 
@@ -154,20 +181,23 @@ function render(){
     $('.bank-column').insertAdjacentHTML('beforeend',`<p class="ai-result" data-ai-source="${esc(ai.source)}">${icon('check')} ${ai.source==='deepseek'?'DeepSeek':'本地 AI'} 已完成行动</p>`);
   }
   renderConnection();
-  if(dialogKind==='inventory'){
-    const tabFocus=document.activeElement?.dataset?.inventory;
-    inventoryDialog();
-    if(tabFocus)$(`#inventory-${tabFocus}`)?.focus();
-  }
+  bindMobileMarket();
   if(id&&['nickname','room-code'].includes(id)){const el=document.getElementById(id);if(el){el.value=value;el.focus();try{el.setSelectionRange(start,start);}catch{}}}
 }
 function openDialog(html,kind='generic'){dialogKind=kind;$('#dialog').dataset.kind=kind;$('#dialog').innerHTML=`<button class="dialog-close icon-btn" data-do="close" aria-label="关闭">${icon('close')}</button>${html}`;if(!$('#dialog').open)$('#dialog').showModal();}
 function closeDialog(){dialogKind=null;$('#dialog').close();}
 
-let tooltipCard=null;
+let tooltipTarget=null,pressedElement=null;
 function hideCardTooltip(){
-  tooltipCard?.removeAttribute('aria-describedby');tooltipCard=null;
-  const tip=$('#card-tooltip');if(tip)tip.hidden=true;
+  tooltipTarget?.removeAttribute('aria-describedby');tooltipTarget=null;
+  const tip=$('#card-tooltip');if(tip){tip.hidden=true;tip.classList.remove('noble-tooltip');}
+}
+function positionTooltip(element,tip){
+  tip.hidden=false;tooltipTarget=element;element.setAttribute('aria-describedby','card-tooltip');
+  const rect=element.getBoundingClientRect(),box=tip.getBoundingClientRect();
+  const left=Math.max(10,Math.min(rect.left+rect.width/2-box.width/2,document.documentElement.clientWidth-box.width-10));
+  const top=rect.top>=box.height+18?rect.top-box.height-10:Math.min(rect.bottom+10,window.innerHeight-box.height-10);
+  tip.style.left=`${left}px`;tip.style.top=`${Math.max(10,top)}px`;
 }
 function showCardTooltip(element){
   hideCardTooltip();
@@ -176,28 +206,54 @@ function showCardTooltip(element){
   const me=g.players.find(p=>p.id===state.me.id);
   const card=[...Object.values(g.market).flat(),...me.reserved].find(c=>c.id===element.dataset.card);
   if(!card)return;
-  const gap=purchaseGap(me,card);if(!gap.remaining)return;
+  const gap=purchaseGap(me,card);if(!gap.remaining)return false;
   const tip=$('#card-tooltip');
   tip.innerHTML=`<strong>还需 ${gap.remaining} 枚宝石</strong><div class="shortfall-colors">${Object.entries(gap.colors).map(([c,n])=>`<span>${gem(c,18)}${NAMES[c]} <b>×${n}</b></span>`).join('')}</div><p>${gap.goldUsed?`现有黄金可抵扣其中 ${gap.goldUsed} 枚；抵扣后仍缺 ${gap.remaining} 枚。`:'已计入你拥有的宝石与永久折扣。'}</p>`;
-  tip.hidden=false;tooltipCard=element;element.setAttribute('aria-describedby','card-tooltip');
-  const rect=element.getBoundingClientRect(),box=tip.getBoundingClientRect();
-  const left=Math.max(10,Math.min(rect.left+rect.width/2-box.width/2,document.documentElement.clientWidth-box.width-10));
-  const top=rect.top>=box.height+18?rect.top-box.height-10:Math.min(rect.bottom+10,window.innerHeight-box.height-10);
-  tip.style.left=`${left}px`;tip.style.top=`${Math.max(10,top)}px`;
+  positionTooltip(element,tip);return true;
 }
+function showNobleTooltip(element){
+  hideCardTooltip();
+  const g=state?.room?.game;if(!g||$('#dialog').open)return false;
+  const me=g.players.find(p=>p.id===state.me.id),noble=g.nobles.find(n=>n.id===element.dataset.nobleInfo);
+  if(!me||!noble)return false;
+  const gap=nobleGap(me,noble),tip=$('#card-tooltip');tip.classList.add('noble-tooltip');
+  tip.innerHTML=`<strong>${gap.remaining?`还差 ${gap.remaining} 张发展卡`:'已满足贵族来访条件'}</strong><div class="shortfall-colors noble-shortfall">${Object.entries(gap.colors).map(([c,n])=>`<span>${nobleCardIcon(c,18)}${NAMES[c]} <b>×${n}</b></span>`).join('')||'<span>所有颜色要求均已满足</span>'}</div><p>贵族价值 3 分。回合结束时，永久发展卡满足全部颜色要求即可获得；每回合最多获得 1 位。</p>`;
+  positionTooltip(element,tip);return true;
+}
+function showContextTooltip(element){return element.dataset.card?showCardTooltip(element):showNobleTooltip(element);}
+const longPressTracker=createLongPressTracker({onTrigger:element=>{longPressShown=showContextTooltip(element);if(longPressShown)element.classList.add('long-press-active');}});
 document.addEventListener('pointerover',event=>{
   if(event.pointerType==='touch')return;
-  const card=event.target.closest('[data-card]');
-  if(card&&!card.contains(event.relatedTarget))showCardTooltip(card);
+  const target=event.target.closest('[data-card],[data-noble-info]');
+  if(target&&!target.contains(event.relatedTarget))showContextTooltip(target);
 });
 document.addEventListener('pointerout',event=>{
-  if(tooltipCard?.contains(event.target)&&!tooltipCard.contains(event.relatedTarget))hideCardTooltip();
+  if(event.pointerType==='touch')return;
+  if(tooltipTarget?.contains(event.target)&&!tooltipTarget.contains(event.relatedTarget))hideCardTooltip();
 });
-document.addEventListener('focusin',event=>{const card=event.target.closest('[data-card]');if(card)showCardTooltip(card);});
+document.addEventListener('focusin',event=>{const target=event.target.closest('[data-card],[data-noble-info]');if(target)showContextTooltip(target);});
 document.addEventListener('focusout',hideCardTooltip);
-document.addEventListener('click',hideCardTooltip);
+document.addEventListener('pointerdown',event=>{
+  if(event.pointerType!=='touch')return;
+  pressedElement=event.target.closest('[data-card],[data-noble-info]');longPressShown=false;
+  if(pressedElement&&!pressedElement.disabled)longPressTracker.start(pressedElement,{x:event.clientX,y:event.clientY});
+});
+document.addEventListener('pointermove',event=>{if(event.pointerType==='touch')longPressTracker.move({x:event.clientX,y:event.clientY});},{passive:true});
+document.addEventListener('pointerup',event=>{
+  if(event.pointerType!=='touch')return;
+  const target=longPressTracker.finish();pressedElement?.classList.remove('long-press-active');pressedElement=null;
+  if(target&&longPressShown){suppressLongPressClick=target;setTimeout(()=>{if(suppressLongPressClick===target)suppressLongPressClick=null;},800);}
+});
+document.addEventListener('pointercancel',()=>{longPressTracker.cancel();pressedElement?.classList.remove('long-press-active');pressedElement=null;longPressShown=false;});
+document.addEventListener('click',event=>{
+  if(suppressLongPressClick?.contains(event.target)){event.preventDefault();event.stopImmediatePropagation();suppressLongPressClick=null;return;}
+  hideCardTooltip();
+},true);
 window.addEventListener('scroll',hideCardTooltip,true);
-window.addEventListener('resize',hideCardTooltip);
+window.addEventListener('resize',()=>{
+  hideCardTooltip();const next=matchMedia(MOBILE_TABLE_QUERY).matches;
+  if(next!==mobileTableLayout){mobileTableLayout=next;render();}
+});
 function confirmDialog(title,text,action,label='确认'){openDialog(`<div class="eyebrow">TABLE MATTERS</div><h2>${title}</h2><p>${text}</p><div class="dialog-actions"><button class="btn subtle" data-do="close">取消</button><button class="btn primary" data-confirm="${action}">${label}</button></div>`);}
 function cardDialog(cardId,level){
   const r=state.room,g=r.game,me=g.players.find(p=>p.id===state.me.id);if(g.status!=='playing')return;
@@ -220,15 +276,15 @@ document.addEventListener('submit',async e=>{
   if(e.target.id==='profile-form'){e.preventDefault();const name=$('#profile-name').value;try{const next=await api('/api/session',{name});storage.set('splendor.nickname',next.me.name);closeDialog();accept(next);toast('昵称已保存');}catch(error){toast(error.message);}}
 });
 document.addEventListener('keydown',e=>{
-  if(!e.target.matches('[data-inventory]')||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+  if(!e.target.matches('[data-market-view]')||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
   e.preventDefault();
-  const tab=e.key==='Home'?'resources':e.key==='End'?'hand':inventoryTab==='resources'?'hand':'resources';
-  inventoryDialog(tab);$(`#inventory-${tab}`).focus();
+  const current=Number(e.target.dataset.marketView),next=e.key==='Home'?0:e.key==='End'?2:e.key==='ArrowLeft'?Math.max(0,current-1):Math.min(2,current+1);
+  showMobileMarketView(next);document.querySelector(`[data-market-view="${next}"]`)?.focus();
 });
 document.addEventListener('click',async e=>{
   const el=e.target.closest('button');if(!el||el.disabled)return;
   const d=el.dataset;
-  if(d.inventory){inventoryDialog(d.inventory);$(`#inventory-${d.inventory}`).focus();return;}
+  if(d.marketView!==undefined){showMobileMarketView(Number(d.marketView));return;}
   if(d.card)return cardDialog(d.card);
   if(d.deck)return cardDialog(null,Number(d.deck));
   if(d.gem){
@@ -245,7 +301,6 @@ document.addEventListener('click',async e=>{
   if(d.ai){closeDialog();return mutate('/api/room/ai',{mode:d.ai});}
   switch(d.do){
     case 'toggle-settings':settingsExpanded=!settingsExpanded;render();document.querySelector('.settings-toggle')?.focus();return;
-    case 'inventory':return inventoryDialog('resources');
     case 'table-menu':return openDialog(`<h2>房间 ${state.room.code} · 第 ${state.room.game.round} 轮</h2><div class="table-menu"><button class="btn secondary" data-do="invite">${icon('copy')}复制邀请链接</button><button class="btn secondary" data-do="profile">${icon('users')}修改昵称</button><button class="btn secondary" data-do="rules">${icon('book')}游戏规则</button>${state.room.hostId===state.me.id&&state.room.game.status==='playing'?'<button class="btn secondary" data-do="finish">结束本局</button>':''}<button class="btn secondary" data-do="leave">${icon('exit')}离开房间</button>${state.room.hostId===state.me.id?state.room.players.filter(p=>p.id!==state.me.id&&!p.ai).map(p=>`<button class="btn secondary" data-kick="${p.id}">${icon('close')}移出 ${esc(p.name)}</button>`).join(''):''}</div>${state.room.aiStatus?.notice?`<p>${esc(state.room.aiStatus.notice)}</p>`:''}`);
     case 'collection':{const me=state.room.game.players.find(p=>p.id===state.me.id);return openDialog(`<div class="eyebrow">YOUR DEVELOPMENT CARDS</div><h2>已购发展卡 · ${me.cards.length} 张</h2><div class="collection-grid">${me.cards.map(c=>cardHTML(c,{disabled:true})).join('')||'<p class="muted">购入的卡牌将汇集于此。</p>'}</div>`);}
     case 'history':return openDialog(`<div class="eyebrow">TABLE JOURNAL</div><h2>对局记录</h2><div class="history-list">${state.room.game.log.slice().reverse().map(l=>`<p>${esc(l.text)}</p>`).join('')||'<p>好局开始。</p>'}</div>`);

@@ -42,6 +42,25 @@ test('online state handles multiple tabs, disconnection and reconnection',t=>{
   b.end();assert.equal(store.snapshot(host).room.players[1].online,false);
   store.attach(guest,new Stream());assert.equal(store.snapshot(host).room.players[1].online,true);
 });
+test('the room survives everyone disconnecting until the idle timeout, then clears memberships',t=>{
+  const {store,host,guest,room}=setup(t);const a=new Stream(),b=new Stream();
+  store.attach(host,a);store.attach(guest,b);a.end();b.end();
+  assert.equal(store.rooms.has(room.code),true);
+  room.updatedAt=Date.now()-12*60*60*1000+1000;store.sweep();
+  assert.equal(store.rooms.has(room.code),true);
+  room.updatedAt=Date.now()-12*60*60*1000-1000;store.sweep();
+  assert.equal(store.rooms.has(room.code),false);
+  assert.equal(host.roomCode,null);assert.equal(guest.roomCode,null);
+});
+test('the final human actively leaving deletes a running room and its managed seats',t=>{
+  const {store,host,guest,room}=setup(t);store.start(host);
+  store.leave(host);
+  assert.equal(store.rooms.has(room.code),true);
+  assert.equal(room.players.find(p=>p.id===host.id).ai,true);
+  store.leave(guest);
+  assert.equal(store.rooms.has(room.code),false);
+  assert.equal(host.roomCode,null);assert.equal(guest.roomCode,null);
+});
 test('duplicate action version cannot spend gems twice, and a reconnect retains seat',t=>{
   const {store,host,room}=setup(t);store.start(host);
   const version=room.version;store.action(host,{version,action:{type:'take',gems:{white:1}}});

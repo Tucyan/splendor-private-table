@@ -74,6 +74,11 @@
 .shortfall-colors>span{display:flex;align-items:center;gap:5px;font-size:10px}
 .shortfall-colors b{font-weight:600;color:#e8ead6}
 .card-tooltip>p{font-size:10px;color:#9bafa7;line-height:1.8}
+.noble-card-icon{display:inline-block;width:11px;height:11px;vertical-align:middle;flex-shrink:0;color:#dfe8e9;filter:drop-shadow(0 1px 1px #07121680)}
+.noble-card-icon.blue{color:#5d8ee1}.noble-card-icon.green{color:#62bc96}.noble-card-icon.red{color:#dd7184}.noble-card-icon.black{color:#8a8fa4}
+.noble-tooltip{width:278px}
+.noble-shortfall .noble-card-icon{width:18px;height:18px}
+.long-press-active{outline:2px solid var(--gold);outline-offset:2px}
 .blocked-turn-note{font-size:9px;color:#d2bb8f;padding-top:5px;line-height:1.5}
 .gold-payment-note{font-size:10px;margin-top:10px;line-height:1.8;color:#c9b380}
 .room-tools>.end-game-button{display:inline-flex!important;color:#cf9e85;font-size:11px}
@@ -102,7 +107,7 @@
   .market-column .noble-title b{font-size:18px}
   .market-column .noble-portrait{width:25px;height:30px}
   .market-column .noble-cost{gap:5px}
-  .market-column .noble-cost .gem{width:12px;height:12px}
+  .market-column .noble-cost .noble-card-icon{width:12px;height:12px}
   .market-column .market-heading{margin-top:12px}
   .market-column .market{flex:1;min-height:0;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:10px}
   .market-column .market-row{min-height:0;gap:10px}

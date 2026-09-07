@@ -1,22 +1,11 @@
 .player-score{flex-shrink:0;min-width:22px;text-align:right;color:var(--gold);font:21px/1 var(--serif)}
 .player-score small{font:9px var(--sans);margin-left:2px}
-.mobile-inventory,.mobile-table-tools{display:none}
+.mobile-inventory,.mobile-table-tools,.market-view-tabs,.mobile-market-panel,.action-label-compact{display:none}
 .summary-bonus{display:none}
-.inventory-tabs{display:flex;border-bottom:1px solid var(--line);margin-bottom:14px}
-.inventory-tabs button{flex:1;min-height:44px;background:none;color:var(--muted);border-bottom:2px solid transparent;font-size:13px}
-.inventory-tabs [aria-selected="true"]{color:var(--gold);border-color:var(--gold)}
-dialog[data-kind="inventory"] h2{margin-top:0}
-dialog[data-kind="inventory"] h2 small{font:13px var(--sans);color:var(--gold)}
-dialog[data-kind="inventory"] .my-gems{margin-top:0}
-dialog[data-kind="inventory"] .my-bonuses,dialog[data-kind="inventory"] .my-equivalent{margin-top:16px}
-dialog[data-kind="inventory"] .hand{background:none;border:0;padding:0;margin:0}
-dialog[data-kind="inventory"] .hand-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-dialog[data-kind="inventory"] .hand-cards .dev-card{width:100%;max-width:none;aspect-ratio:.7}
-dialog[data-kind="inventory"] .empty-hand{grid-column:1/-1;min-height:150px;display:grid;place-items:center}
 .table-menu{display:grid;gap:10px}
 .card-gap{color:#ecc5a1}
 
-/* Phones use a bounded table and an inventory dialog, never a shrunken desktop. */
+/* Phones use a bounded table with swipeable market pages, never a shrunken desktop. */
 @media(max-width:1099px), (max-width:1199px) and (max-height:649px){
   .at-table{height:100dvh;min-height:0;overscroll-behavior:none}
   .at-table #app{height:100%;display:flex;flex-direction:column}
@@ -50,7 +39,7 @@ dialog[data-kind="inventory"] .empty-hand{grid-column:1/-1;min-height:150px;disp
   .players-column .player-score{grid-row:2;grid-column:3;font:16px/14px var(--serif);min-width:20px;white-space:nowrap}
   .players-column .player-score small{font-size:8px}
   .players-column .player-kick{display:none}
-  .game-page .market-column{grid-column:1;grid-row:2;min-height:0;display:flex;flex-direction:column;gap:5px}
+  .game-page .market-column{grid-column:1;grid-row:2;min-height:0;display:flex;flex-direction:column;gap:4px}
   .market-column>.section-label{display:none}
   .market-column .nobles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));flex-shrink:0;gap:4px;min-height:0}
   .market-column .noble{width:100%;max-width:none;min-width:0;height:48px;padding:4px;display:flex;justify-content:center;border-radius:4px}
@@ -59,9 +48,17 @@ dialog[data-kind="inventory"] .empty-hand{grid-column:1/-1;min-height:150px;disp
   .market-column .noble-title b{font-size:15px}
   .market-column .noble-cost{gap:2px;margin-top:1px;justify-content:center}
   .market-column .noble-cost>span{gap:0;font-size:9px}
-  .market-column .noble-cost .gem{width:10px;height:10px}
-  .market-column .market{flex:1;min-height:0;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:5px}
+  .market-column .noble-cost .noble-card-icon{width:10px;height:10px}
+  .market-view-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));height:24px;min-height:24px;flex-shrink:0;border:1px solid #536b555c;border-radius:4px;overflow:hidden;background:#132426}
+  .market-view-tabs button{min-width:0;background:none;color:#91a7a4;font-size:9px;border-right:1px solid #536b553d}
+  .market-view-tabs button:last-child{border-right:0}
+  .market-view-tabs button[aria-selected="true"]{background:#50644c66;color:#ead0a1}
+  .market-column .market{flex:1;min-height:0;display:flex;flex-direction:row;gap:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;touch-action:pan-x}
+  .market-column .market::-webkit-scrollbar{display:none}
+  .market-column .market-view{flex:0 0 100%;width:100%;min-width:100%;height:100%;scroll-snap-align:start;scroll-snap-stop:always}
+  .market-column .market-board{display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:5px}
   .market-column .market-row{min-height:0;grid-template-columns:24px repeat(4,minmax(0,1fr));gap:4px}
+  .market-column [data-card],.market-column [data-noble-info]{-webkit-touch-callout:none;user-select:none}
   .market-column .dev-card{height:100%;width:100%;min-height:0;aspect-ratio:auto;border-radius:4px}
   .market-column .dev-card:hover{transform:none}
   .market-column .card-top{top:4px;left:4px;right:4px}
@@ -80,9 +77,9 @@ dialog[data-kind="inventory"] .empty-hand{grid-column:1/-1;min-height:150px;disp
   .market-column .deck>span small{display:none}
   .game-page .personal-sidebar{grid-column:1;grid-row:3;padding:0;border:0;border-top:1px solid #597160;background:#192a2a;border-radius:0;min-height:0}
   .personal-sidebar>.personal-heading,.personal-sidebar>.my-gems,.personal-sidebar>.my-bonuses,.personal-sidebar>.my-equivalent,.personal-sidebar>.owned-gold,.personal-sidebar>.hand,.personal-sidebar>.collection-button{display:none}
-  .personal-sidebar .bank-panel{border:0;border-radius:0;background:none;padding:5px 4px 4px;display:grid;grid-template-columns:minmax(0,1fr) 112px;column-gap:6px;row-gap:3px}
+  .personal-sidebar .bank-panel{border:0;border-radius:0;background:none;padding:5px 4px 4px;display:grid;grid-template-columns:minmax(0,1fr) 54px;column-gap:5px;row-gap:3px}
   .personal-sidebar .bank-panel>.section-label{grid-column:1/-1;margin:0;line-height:14px;font-size:10px}
-  .personal-sidebar .gem-bank{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin:0}
+  .personal-sidebar .gem-bank{grid-column:1;grid-row:2;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px;margin:0}
   .personal-sidebar .token-button{min-height:44px;gap:0;justify-content:center;font-size:8px}
   .personal-sidebar .token-button>span:last-child{display:none}
   .personal-sidebar .token{width:31px;height:31px;box-shadow:none}
@@ -90,19 +87,32 @@ dialog[data-kind="inventory"] .empty-hand{grid-column:1/-1;min-height:150px;disp
   .personal-sidebar .token b{width:16px;height:16px;font-size:10px}
   .personal-sidebar .token em{width:16px;height:16px;font-size:10px}
   .personal-sidebar .token-button.selected .token{outline-offset:2px;transform:none}
-  .personal-sidebar .selection-status{grid-column:1;grid-row:3;align-self:center;margin:0;padding:0;font-size:9px;line-height:13px;gap:4px}
-  .personal-sidebar .selection-status .tiny-btn{min-height:36px;min-width:32px}
-  .personal-sidebar .bank-panel>.btn{grid-column:2;grid-row:3;margin:0;width:100%;height:36px;font-size:11px;padding:0 4px;gap:4px}
+  .personal-sidebar .selection-status{display:none}
+  .personal-sidebar .bank-panel>.btn{grid-column:2;grid-row:2;margin:0;width:100%;height:44px;align-self:center;font-size:10px;padding:0 2px;gap:2px;white-space:normal;line-height:1.2}
+  .personal-sidebar .bank-panel>.btn .icon{width:12px;height:12px}
+  .personal-sidebar .action-label-full{display:none}
+  .personal-sidebar .action-label-compact{display:inline}
   .personal-sidebar .ai-result,.personal-sidebar .ai-notice{display:none}
-  .mobile-inventory{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;align-items:center;border-top:1px solid #536b554d;padding:0 4px}
-  .mobile-inventory-toggle{min-height:44px;background:none;display:grid;grid-template-columns:minmax(0,1fr) 16px;gap:1px;color:#dfe7d5;text-align:left;padding:3px 0}
-  .mobile-inventory-toggle strong{font-size:11px;font-weight:500}
-  .mobile-inventory-toggle>span{grid-column:1/-1;font-size:9px;color:#a5b6ad;white-space:nowrap}
-  .mobile-inventory-toggle .icon{grid-column:2;grid-row:1;align-self:center;width:16px;height:16px;transform:rotate(-90deg)}
-  .inventory-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px}
+  .mobile-inventory{display:block;min-height:42px;border-top:1px solid #536b554d;padding:4px}
+  .inventory-summary{width:100%;height:100%;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px}
   .inventory-summary>span{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:10px}
   .inventory-summary b{font-weight:500;white-space:nowrap}
   .inventory-summary .gold{border-left:1px solid #c5a96955;color:var(--gold)}
+  .mobile-market-panel{display:flex;flex-direction:column;min-height:0;padding:5px 6px;background:#172829}
+  .mobile-panel-heading{height:25px;min-height:25px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #52685a4d;font-size:11px}
+  .mobile-panel-heading strong{font-weight:500;color:#e6d0a4}
+  .mobile-panel-heading span{font-size:9px;color:#91a7a4}
+  .reserved-market-view .hand-cards{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:6px 0}
+  .reserved-market-view .dev-card{width:100%;height:100%;min-height:0;aspect-ratio:auto}
+  .reserved-market-view .empty-hand{grid-column:1/-1;display:grid;place-items:center;min-height:0;border:1px dashed #65816d66;border-radius:5px}
+  .mobile-resource-scroll{flex:1;min-height:0;overflow:auto;padding:2px 3px 4px;overscroll-behavior:contain}
+  .resources-market-view .my-gems,.resources-market-view .my-bonuses,.resources-market-view .my-equivalent{margin-top:6px}
+  .resources-market-view .section-label{margin-bottom:4px;font-size:10px}
+  .resources-market-view .section-label>span{font-size:8px}
+  .resources-market-view .owned-bonuses>span{padding:5px 2px}
+  .resources-market-view .owned-bonuses .gem{width:16px;height:16px}
+  .resources-market-view .owned-gold{margin-top:5px;padding-top:5px}
+  .resources-market-view .collection-button{padding-top:6px;margin-top:6px}
   .game-page .results{margin:0;padding:6px;gap:6px;flex-wrap:nowrap;flex-shrink:0;min-width:0}
   .game-page .results>div{min-width:0;max-width:none;flex:1}
   .game-page .results .eyebrow,.game-page .results .winner-icon{display:none}
@@ -142,7 +152,7 @@ dialog[data-kind="inventory"] .empty-hand{grid-column:1/-1;min-height:150px;disp
   .market-column .noble{height:34px;padding:2px}
   .market-column .noble-title b{font-size:12px;line-height:12px}
   .market-column .noble-cost>span{font-size:8px}
-  .market-column .noble-cost .gem{width:8px;height:8px}
+  .market-column .noble-cost .noble-card-icon{width:8px;height:8px}
   .market-column .market-row{grid-template-columns:20px repeat(4,minmax(0,1fr));gap:4px}
   .market-column .prestige{font-size:19px;line-height:21px}
   .market-column .bonus{width:19px;height:21px}
@@ -152,32 +162,14 @@ dialog[data-kind="inventory"] .empty-hand{grid-column:1/-1;min-height:150px;disp
   .market-column .costs{gap:1px}
   .market-column .cost{min-width:17px;height:15px;font-size:9px;padding:0 1px}
   .market-column .cost .gem{width:8px;height:8px}
-  .personal-sidebar .bank-panel{grid-template-columns:minmax(0,1fr);padding:4px 0;row-gap:4px}
+  .personal-sidebar .bank-panel{grid-template-columns:minmax(0,1fr) 42px;padding:4px 0;column-gap:3px;row-gap:4px}
   .personal-sidebar .bank-panel>.section-label{font-size:11px}
-  .personal-sidebar .gem-bank{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+  .personal-sidebar .gem-bank{grid-column:1;grid-row:2;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
   .personal-sidebar .token-button{min-height:40px}
-  .personal-sidebar .selection-status{grid-column:1;grid-row:3}
-  .personal-sidebar .selection-status .tiny-btn{min-height:26px}
-  .personal-sidebar .bank-panel>.btn{grid-column:1;grid-row:4;height:36px}
-  .mobile-inventory{grid-template-columns:minmax(0,1fr);gap:0;padding:2px 0}
-  .mobile-inventory-toggle{min-height:36px;grid-template-columns:minmax(0,1fr) 16px;align-items:center}
-  .mobile-inventory-toggle .icon{grid-column:2;grid-row:1}
+  .personal-sidebar .bank-panel>.btn{grid-column:2;grid-row:2;height:36px}
+  .mobile-inventory{padding:2px 0}
   .inventory-summary>span{flex-direction:row;gap:1px}
   .inventory-summary .gem{width:12px;height:12px}
-  .at-table dialog[data-kind="inventory"]{width:620px;padding:12px 18px}
-  .at-table dialog[data-kind="inventory"] h2{font-size:16px;margin-bottom:4px}
-  .at-table dialog[data-kind="inventory"] .inventory-tabs{margin-bottom:6px}
-  .at-table dialog[data-kind="inventory"] .inventory-tabs button{min-height:34px;font-size:12px}
-  .at-table dialog[data-kind="inventory"] #inventory-content{min-height:0}
-  .at-table dialog[data-kind="inventory"] .my-bonuses,.at-table dialog[data-kind="inventory"] .my-equivalent{margin-top:5px}
-  .at-table dialog[data-kind="inventory"] .my-gems,.at-table dialog[data-kind="inventory"] .my-bonuses,.at-table dialog[data-kind="inventory"] .my-equivalent{display:grid;grid-template-columns:130px minmax(0,1fr);gap:10px;align-items:center}
-  .at-table dialog[data-kind="inventory"] .section-label{font-size:11px;display:block;margin:0}
-  .at-table dialog[data-kind="inventory"] .section-label>span{display:block;font-size:8px}
-  .at-table dialog[data-kind="inventory"] .owned-bonuses>span{padding:3px 2px}
-  .at-table dialog[data-kind="inventory"] .collection-button{min-height:32px;margin-top:4px;padding-top:4px}
-  .at-table dialog[data-kind="inventory"] .hand-cards{height:min(150px,calc(100dvh - 190px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));margin-top:6px}
-  .at-table dialog[data-kind="inventory"] .hand-cards .dev-card{height:100%;aspect-ratio:auto}
-  .at-table dialog[data-kind="inventory"] .empty-hand{min-height:0}
   .at-table dialog[data-kind="card"]{width:620px;padding:12px 16px;display:none}
   .at-table dialog[data-kind="card"][open]{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:6px 14px}
   .at-table dialog[data-kind="card"] h2{grid-column:1/-1;font-size:17px;margin-bottom:2px}

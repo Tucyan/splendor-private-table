@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {canAffordCard,purchaseGap,discountedCost} from '../public/player-view.js';
+import * as playerView from '../public/player-view.js';
 
 test('affordability includes permanent discounts without requiring the player turn',()=>{
   const player={bonuses:{green:2},gems:{blue:2}};
@@ -30,4 +31,12 @@ test('hover shortfall explains colors before gold and the remaining total after 
 test('displayed price only subtracts permanent bonuses, never holdings or gold',()=>{
   const player={bonuses:{green:1},gems:{white:1,blue:0,gold:5}};
   assert.deepEqual(discountedCost(player,{cost:{white:2,blue:1,green:1}}),{white:2,blue:1,green:0,red:0,black:0});
+});
+
+test('noble shortfall counts permanent cards by color and ignores gem tokens',()=>{
+  const gap=playerView.nobleGap?.(
+    {bonuses:{white:2,blue:4,green:0},gems:{white:9,green:9,gold:5}},
+    {cost:{white:3,blue:3,green:3}},
+  );
+  assert.deepEqual(gap,{colors:{white:1,green:3},remaining:4});
 });
