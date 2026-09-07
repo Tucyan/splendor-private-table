@@ -11,6 +11,10 @@ ENV_FILE="${SPLENDOR_ENV_FILE:-/etc/splendor.env}"
 NODE_BIN="${SPLENDOR_NODE:-/opt/node-v24.11.1-linux-x64/bin/node}"
 HEALTH_URL="${SPLENDOR_HEALTH_URL:-http://127.0.0.1:3030/api/health}"
 OWNER="${SPLENDOR_OWNER:-splendor:splendor}"
+CLONE_ATTEMPTS="${SPLENDOR_CLONE_ATTEMPTS:-3}"
+CLONE_RETRY_DELAY="${SPLENDOR_CLONE_RETRY_DELAY:-3}"
+HEALTH_ATTEMPTS="${SPLENDOR_HEALTH_ATTEMPTS:-30}"
+HEALTH_RETRY_DELAY="${SPLENDOR_HEALTH_RETRY_DELAY:-1}"
 UPDATE_SERVICE_UNIT=1
 SKIP_TESTS=0
 LOCK_DIR="/var/lock/splendor-update.lock.d"
@@ -41,6 +45,40 @@ EOF
 die() { printf '更新失败：%s\n' "$*" >&2; exit 1; }
 log() { printf '[splendor-update] %s\n' "$*"; }
 
+clone_with_retry() {
+  local repo=$1 branch=$2 parent=$3 attempt candidate
+  for ((attempt=1; attempt<=CLONE_ATTEMPTS; attempt++)); do
+    candidate="$(mktemp -d "$parent/.splendor-update.XXXXXX")"
+    if git -c http.version=HTTP/1.1 clone --depth 1 --branch "$branch" "$repo" "$candidate"; then
+      TEMP_DIR=$candidate
+      return 0
+    fi
+    [[ $candidate == "$parent"/.splendor-update.* && $parent != / ]] && rm -rf -- "$candidate"
+    if (( attempt < CLONE_ATTEMPTS )); then
+      log "下载连接中断，${CLONE_RETRY_DELAY} 秒后重试（$attempt/$CLONE_ATTEMPTS）"
+      sleep "$CLONE_RETRY_DELAY"
+    fi
+  done
+  return 1
+}
+
+wait_for_health() {
+  local service=$1 url=$2 attempt
+  for ((attempt=1; attempt<=HEALTH_ATTEMPTS; attempt++)); do
+    if systemctl is-active --quiet "$service" &&
+       curl --fail --silent --max-time 3 "$url" 2>/dev/null |
+         grep -q '"ok"[[:space:]]*:[[:space:]]*true'; then
+      return 0
+    fi
+    (( attempt < HEALTH_ATTEMPTS )) && sleep "$HEALTH_RETRY_DELAY"
+  done
+  return 1
+}
+
+if [[ ${SPLENDOR_UPDATE_TESTING:-0} == 1 ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 while (($#)); do
   case "$1" in
     --branch) [[ $# -ge 2 ]] || die "--branch 缺少参数"; BRANCH=$2; shift 2 ;;
@@ -59,8 +97,9 @@ done
 [[ $APP_DIR == /* && $APP_DIR != / && $APP_DIR != */.. && $APP_DIR != */. ]] || die "应用目录不安全：$APP_DIR"
 [[ $SERVICE =~ ^[A-Za-z0-9_.@-]+$ ]] || die "服务名不安全：$SERVICE"
 [[ -n $BRANCH && -n $REPO_URL ]] || die "仓库和分支不能为空"
+[[ $CLONE_ATTEMPTS =~ ^[1-9][0-9]*$ && $HEALTH_ATTEMPTS =~ ^[1-9][0-9]*$ ]] || die "重试次数必须为正整数"
 
-for command in git systemctl curl mktemp mv date cmp install grep getent; do
+for command in git systemctl curl mktemp mv date cmp install grep getent rm; do
   command -v "$command" >/dev/null 2>&1 || die "缺少命令：$command"
 done
 [[ -x $NODE_BIN ]] || NODE_BIN="$(command -v node || true)"
@@ -94,10 +133,9 @@ rollback() {
 trap rollback ERR
 
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
-TEMP_DIR="$(mktemp -d "$(dirname "$APP_DIR")/.splendor-update.XXXXXX")"
 BACKUP_DIR="${APP_DIR}.backup-${STAMP}"
 log "从 $REPO_URL ($BRANCH) 下载到临时目录"
-git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TEMP_DIR"
+clone_with_retry "$REPO_URL" "$BRANCH" "$(dirname "$APP_DIR")" || die "连续 $CLONE_ATTEMPTS 次无法从 GitHub 下载，请稍后重试或设置 SPLENDOR_REPO_URL"
 
 [[ -f "$TEMP_DIR/package.json" && -f "$TEMP_DIR/src/server.js" && -f "$TEMP_DIR/public/index.html" ]] || die "仓库内容不完整，停止切换"
 if (( SKIP_TESTS == 0 )); then
@@ -131,8 +169,7 @@ fi
 log "启动 $SERVICE"
 systemctl start "$SERVICE"
 log "检查服务状态和健康接口"
-systemctl is-active --quiet "$SERVICE" || die "$SERVICE 未处于 active 状态，请查看 journalctl -u $SERVICE"
-curl --fail --silent --show-error --max-time 15 "$HEALTH_URL" | grep -q '"ok"[[:space:]]*:[[:space:]]*true' || die "健康检查失败：$HEALTH_URL"
+wait_for_health "$SERVICE" "$HEALTH_URL" || die "服务在 ${HEALTH_ATTEMPTS} 次检查后仍未就绪：$HEALTH_URL；请查看 journalctl -u $SERVICE"
 
 log "更新完成：$(cd "$APP_DIR" && git rev-parse --short HEAD)"
 log "旧版本备份：$BACKUP_DIR"
