@@ -14,7 +14,33 @@ export function swipePageIndex(startIndex,deltaX,viewCount,threshold=48){
   return Math.max(0,Math.min(viewCount-1,startIndex+direction));
 }
 
-export function createLongPressTracker({delay=450,tolerance=10,onTrigger=()=>{}}={}){
+export function createTouchSwipeTracker({threshold=48,onSwipe=()=>{}}={}){
+  let startTouch=null;
+  const findTouch=touches=>startTouch&&Array.from(touches||[]).find(touch=>touch.identifier===startTouch.identifier);
+  const direction=touch=>{
+    if(!startTouch||!touch)return null;
+    const dx=touch.clientX-startTouch.x,dy=touch.clientY-startTouch.y;
+    if(Math.hypot(dx,dy)<8)return null;
+    return Math.abs(dx)>Math.abs(dy)?'horizontal':'vertical';
+  };
+  return {
+    start(touches){
+      const list=Array.from(touches||[]),touch=list.length===1?list[0]:null;
+      startTouch=touch?{identifier:touch.identifier,x:touch.clientX,y:touch.clientY}:null;
+    },
+    move(touches){return direction(findTouch(touches));},
+    finish(changedTouches){
+      const touch=findTouch(changedTouches),start=startTouch;startTouch=null;
+      if(!start||!touch)return null;
+      const dx=touch.clientX-start.x,dy=touch.clientY-start.y;
+      if(Math.abs(dx)<threshold||Math.abs(dx)<=Math.abs(dy))return null;
+      onSwipe(dx);return dx;
+    },
+    cancel(){startTouch=null;},
+  };
+}
+
+export function createLongPressTracker({delay=450,tolerance=10,onTrigger=()=>{},onRelease=()=>{}}={}){
   let timer=null,target=null,startPoint=null,triggered=false;
   const clearTimer=()=>{if(timer!==null){clearTimeout(timer);timer=null;}};
   const reset=()=>{clearTimer();target=null;startPoint=null;triggered=false;};
@@ -29,8 +55,9 @@ export function createLongPressTracker({delay=450,tolerance=10,onTrigger=()=>{}}
     },
     finish(){
       const result=triggered?target:null;
+      if(result)onRelease(result);
       reset();return result;
     },
-    cancel:reset,
+    cancel(){if(triggered&&target)onRelease(target);reset();},
   };
 }
