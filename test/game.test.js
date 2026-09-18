@@ -207,6 +207,24 @@ test('reaching fifteen through a noble starts the final round after noble resolu
   assert.equal(game.status, 'playing');
 });
 
+test('a pending noble starts the configured final round score threshold', () => {
+  let game = createGame(players(2), { finishScore: 5 });
+  game.players[0].score = 5;
+  game.players[0].bonuses = { white: 3, blue: 3, green: 3, red: 3, black: 3 };
+  game.nobles = [
+    { id: 'n1', points: 3, cost: { white: 3, blue: 3, green: 0, red: 0, black: 0 } },
+    { id: 'n2', points: 3, cost: { white: 0, blue: 0, green: 3, red: 3, black: 0 } },
+  ];
+  game.bank = emptyGems();
+  game.market = { 1: [], 2: [], 3: [] };
+  game.decks = { 1: [], 2: [], 3: [] };
+
+  game = applyAction(game, 'p1', { type: 'pass' });
+
+  assert.equal(game.pending?.type, 'noble');
+  assert.equal(game.finalRound, 0);
+});
+
 test('blind reserve log omits the hidden card id and includes player context', () => {
   let game = createGame(players(2));
   const hiddenCard = game.decks[1].at(-1);

@@ -49,6 +49,23 @@ test('room capacity, nickname change and leave transfer host',async t=>{
   const next=(await b('/api/room')).data;assert.equal(next.room.hostId,next.me.id);
 });
 
+test('the AI endpoint forwards all four local mode values without requiring a DeepSeek key', async t => {
+  for (const mode of ['local-simple', 'local-normal', 'local-hard', 'local-hell']) {
+    const { client } = await fixture(t);
+    const host = client();
+    await host('/api/session', { name: '房主' });
+    await host('/api/rooms', {});
+    for (const deepseekMode of ['deepseek', 'deepseek-advanced']) {
+      const denied = await host('/api/room/ai', { mode: deepseekMode });
+      assert.equal(denied.status, 400);
+      assert.match(denied.data.error, /DeepSeek.*密钥/);
+    }
+    const result = await host('/api/room/ai', { mode });
+    assert.equal(result.status, 200, `${mode}: ${result.data.error || ''}`);
+    assert.equal(result.data.room.players.find(p => p.ai).mode, mode);
+  }
+});
+
 test('HTTP validates session, JSON, origin and static file boundaries',async t=>{
   const {base,client}=await fixture(t);
   assert.equal((await client()('/api/rooms',{})).status,401);

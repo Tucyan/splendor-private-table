@@ -203,7 +203,7 @@ export function endGame(game) {
 function endAction(game, playerId) {
   const player = game.players[game.turn];
   if (!settleNobleOrDiscard(game, playerId)) {
-    if (game.finalRound === null && player.score >= 15) game.finalRound = game.turn;
+    if (game.finalRound === null && player.score >= game.finishScore) game.finalRound = game.turn;
     return;
   }
   if (game.finalRound === null && player.score >= game.finishScore) game.finalRound = game.turn;

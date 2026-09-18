@@ -1,0 +1,169 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { AiMemoryStore } from '../src/ai-memory-store.js';
+import { ReflectionCoordinator } from '../src/ai-reflection.js';
+import { RoomStore } from '../src/rooms.js';
+
+const snapshot = gameId => ({
+  gameId,
+  status: 'finished',
+  endReason: 'normal',
+  finishScore: 15,
+  turnOrder: ['a', 'b'],
+  winners: ['a'],
+  players: [{ id: 'a', score: 15, cards: 3, nobles: 1 }, { id: 'b', score: 8, cards: 2, nobles: 0 }],
+  observers: ['ai'],
+  evidence: [{ playerId: 'a', text: 'bought a card' }],
+});
+
+async function tempStore(t) {
+  const directory = await mkdtemp(join(tmpdir(), 'splendor-reflection-lifecycle-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  return new AiMemoryStore({ directory });
+}
+
+test('malformed reflection JSON is retried as a durable job attempt', async t => {
+  const store = await tempStore(t);
+  const coordinator = new ReflectionCoordinator({
+    store,
+    fetchImpl: async () => ({ ok: true, json: async () => { throw new SyntaxError('bad json'); } }),
+  });
+  const result = await coordinator.reflect(snapshot('malformed'), { key: 'test-key' });
+  assert.equal(result.status, 'failed');
+  assert.equal((await store.loadJob('malformed')).attempts, 1);
+});
+
+test('missing lesson evidence is rejected and recorded without committing memory', async t => {
+  const store = await tempStore(t);
+  let calls = 0;
+  const coordinator = new ReflectionCoordinator({ store, fetchImpl: async () => {
+    calls++;
+    return { ok: true, json: async () => ({ lessons: [{ id: 'unsupported', recommendation: 'x' }] }) };
+  } });
+  const incomplete = snapshot('missing-evidence');
+  const result = await coordinator.reflect(incomplete, { key: 'test-key' });
+  assert.equal(result.status, 'failed');
+  assert.match(result.error, /evidence/i);
+  assert.equal(calls, 1);
+  assert.equal((await store.loadJob('missing-evidence')).attempts, 1);
+});
+
+test('restart recovery scans pending jobs and stops after three attempts', async t => {
+  const store = await tempStore(t);
+  await store.saveEpisode('recover-me', snapshot('recover-me'));
+  await store.saveJob('recover-me', { status: 'pending', attempts: 0 });
+  const coordinator = new ReflectionCoordinator({ store, fetchImpl: async () => { throw new Error('offline'); } });
+  for (let i = 0; i < 3; i++) await coordinator.recoverPending({ key: 'test-key' });
+  const job = await store.loadJob('recover-me');
+  assert.equal(job.attempts, 3);
+  assert.equal(job.status, 'failed');
+});
+
+test('advanced start waits for pending reflection jobs before creating a game', async t => {
+  const memoryStore = await tempStore(t);
+  await memoryStore.saveEpisode('old-game', snapshot('old-game'));
+  await memoryStore.saveJob('old-game', { status: 'pending', attempts: 0 });
+  const store = new RoomStore({ aiKey: 'test-key', memoryStore, reflectionBarrierMs: 200, fetchImpl: async () => ({
+    ok: true,
+    json: async () => ({ lessons: [] }),
+  }) });
+  t.after(() => store.close());
+  const host = store.register(null, '房主');
+  const guest = store.register(null, '来宾');
+  store.create(host);
+  store.join(guest, store.room(host).code);
+  store.addAI(host, 'deepseek-advanced');
+  const pending = store.start(host);
+  assert.equal(store.room(host).game, null);
+  await pending;
+  assert.equal(store.room(host).game.status, 'playing');
+  assert.notEqual(store.room(host).aiStatus?.state, 'memory_busy');
+});
+
+test('advanced start continues with previous experience after the sync deadline', async t => {
+  const memoryStore = await tempStore(t);
+  await memoryStore.saveEpisode('stuck-game', snapshot('stuck-game'));
+  await memoryStore.saveJob('stuck-game', { status: 'pending', attempts: 0 });
+  const store = new RoomStore({
+    aiKey: 'test-key', memoryStore, reflectionBarrierMs: 25, reflectionTimeoutMs: 100,
+    fetchImpl: async (_url, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    }),
+  });
+  t.after(() => store.close());
+  const host = store.register(null, '房主');
+  const guest = store.register(null, '来宾');
+  store.create(host);
+  store.join(guest, store.room(host).code);
+  store.addAI(host, 'deepseek-advanced');
+  await store.start(host);
+  assert.equal(store.room(host).game.status, 'playing');
+  assert.equal(store.room(host).aiStatus.state, 'memory_busy');
+  assert.match(store.room(host).aiStatus.notice, /上次经验/);
+  await delay(5);
+});
+
+test('advanced start reports a sync failure but still starts with previous experience', async t => {
+  const memoryStore = await tempStore(t);
+  await memoryStore.saveEpisode('corrupt-index', snapshot('corrupt-index'));
+  await memoryStore.saveJob('corrupt-index', { status: 'pending', attempts: 0 });
+  memoryStore.listJobs = async () => { throw new Error('job index unavailable'); };
+  const store = new RoomStore({ aiKey: 'test-key', memoryStore });
+  t.after(() => store.close());
+  const host = store.register(null, '房主');
+  const guest = store.register(null, '来宾');
+  store.create(host);
+  store.join(guest, store.room(host).code);
+  store.addAI(host, 'deepseek-advanced');
+  await store.start(host);
+  assert.equal(store.room(host).game.status, 'playing');
+  assert.equal(store.room(host).aiStatus.state, 'sync_failed');
+  assert.equal(store.room(host).aiStatus.continueWithPrevious, true);
+});
+
+test('concurrent advanced start requests share one synchronization barrier', async t => {
+  const memoryStore = await tempStore(t);
+  await memoryStore.saveEpisode('one-job', snapshot('one-job'));
+  await memoryStore.saveJob('one-job', { status: 'pending', attempts: 0 });
+  let release;
+  const store = new RoomStore({
+    aiKey: 'test-key', memoryStore, reflectionBarrierMs: 500,
+    fetchImpl: async () => new Promise(resolve => { release = () => resolve({ ok: true, json: async () => ({ lessons: [] }) }); }),
+  });
+  t.after(() => store.close());
+  const host = store.register(null, '房主');
+  const guest = store.register(null, '来宾');
+  store.create(host);
+  store.join(guest, store.room(host).code);
+  store.addAI(host, 'deepseek-advanced');
+  const first = store.start(host);
+  const second = store.start(host);
+  assert.strictEqual(second, first);
+  for (let i = 0; i < 100 && !release; i++) await delay(5);
+  assert.equal(typeof release, 'function');
+  release();
+  await first;
+  assert.equal(store.room(host).game.status, 'playing');
+});
+
+test('basic DeepSeek and local starts bypass reflection synchronization', async t => {
+  for (const mode of ['deepseek', 'local-simple']) {
+    const memoryStore = await tempStore(t);
+    await memoryStore.saveEpisode(`bypass-${mode}`, snapshot(`bypass-${mode}`));
+    await memoryStore.saveJob(`bypass-${mode}`, { status: 'pending', attempts: 0 });
+    const store = new RoomStore({ aiKey: 'test-key', memoryStore, reflectionBarrierMs: 25, fetchImpl: async () => new Promise(() => {}) });
+    t.after(() => store.close());
+    const host = store.register(null, `房主-${mode}`);
+    const guest = store.register(null, `来宾-${mode}`);
+    store.create(host);
+    store.join(guest, store.room(host).code);
+    store.addAI(host, mode);
+    const result = store.start(host);
+    assert.equal(store.room(host).game.status, 'playing');
+    assert.equal(result, undefined);
+  }
+});

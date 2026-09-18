@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { RoomStore } from './rooms.js';
+import { AiMemoryStore } from './ai-memory-store.js';
 
 const PUBLIC=fileURLToPath(new URL('../public/',import.meta.url));
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.ogg':'audio/ogg'};
@@ -17,7 +18,7 @@ async function bodyOf(req){
 }
 
 export function createServer(options={}){
-  const store=new RoomStore(options);
+  const store=new RoomStore({memoryStore:new AiMemoryStore(),...options});
   const registrations=new Map();
   function allowRegistration(ip){
     const now=Date.now();
