@@ -3,6 +3,7 @@ import {gem} from './gems.js';
 import {bindRoomSettings} from './room-settings.js';
 import {canAffordCard,purchaseGap,discountedCost,nobleGap} from './player-view.js';
 import {createLongPressTracker,createTouchSwipeTracker,marketViewIndex,shouldShowContextTooltip,swipePageIndex} from './mobile-interactions.js';
+import {createSoundPlayer,stateSoundCues} from './sound-effects.js';
 
 const basePath=new URL('.',import.meta.url).pathname;
 const appPath=(path='')=>basePath+path.replace(/^\/+/, '');
@@ -22,8 +23,10 @@ let mobileMarketView=0,marketScrollTimer=null,suppressLongPressClick=null,longPr
 let mobileTableLayout=matchMedia(MOBILE_TABLE_QUERY).matches;
 let scoreDraft=null;
 let settingsExpanded=false;
+let soundMuted=storage.get('splendor.sound-muted')==='true';
+const soundPlayer=createSoundPlayer({assetBase:new URL('./assets/audio/',import.meta.url),isMuted:()=>soundMuted});
 
-function icon(name){const shapes={arrow:'M5 12h14m-6-6 6 6-6 6',copy:'M9 9h11v12H9zM15 9V3H3v12h6',users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m11 10v-2a4 4 0 0 0-3-4m0-12a4 4 0 0 1 0 8',bot:'M5 7h14v13H5zM12 3v4M8 12h1m6 0h1M9 16h6M2 11v5m20-5v5',crown:'M3 7l5 4 4-7 4 7 5-4-3 12H6z',close:'m6 6 12 12M6 18 18 6',book:'M12 5v16M12 5C8 2 4 3 2 4v15c5-2 8-1 10 2 2-3 5-4 10-2V4c-3-1-6-2-10 1',exit:'M9 4H4v16h5m4-12 4 4-4 4m-5-4h13',check:'m5 12 4 4 10-10'};return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${shapes[name]||shapes.arrow}"/></svg>`;}
+function icon(name){const shapes={arrow:'M5 12h14m-6-6 6 6-6 6',copy:'M9 9h11v12H9zM15 9V3H3v12h6',users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m11 10v-2a4 4 0 0 0-3-4m0-12a4 4 0 0 1 0 8',bot:'M5 7h14v13H5zM12 3v4M8 12h1m6 0h1M9 16h6M2 11v5m20-5v5',crown:'M3 7l5 4 4-7 4 7 5-4-3 12H6z',close:'m6 6 12 12M6 18 18 6',book:'M12 5v16M12 5C8 2 4 3 2 4v15c5-2 8-1 10 2 2-3 5-4 10-2V4c-3-1-6-2-10 1',exit:'M9 4H4v16h5m4-12 4 4-4 4m-5-4h13',check:'m5 12 4 4 10-10',soundOn:'M11 5 6 9H3v6h3l5 4zM15 9a4 4 0 0 1 0 6m-4-8a8 8 0 0 1 0 12',soundOff:'M11 5 6 9H3v6h3l5 4zM16 10l5 5m0-5-5 5'};return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${shapes[name]||shapes.arrow}"/></svg>`;}
 function nobleCardIcon(color,size=14){return `<svg class="noble-card-icon ${color}" width="${size}" height="${size}" viewBox="0 0 14 14" aria-hidden="true"><rect x="2.25" y=".75" width="9.5" height="12.5" rx="1.35" fill="currentColor"/><path d="M4 3.3h6M4 5.25h4.4M4 10.8h6" fill="none" stroke="#fff" stroke-width=".7" opacity=".42"/></svg>`;}
 function toast(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),4200);}
 
@@ -33,6 +36,7 @@ async function api(path,body){
 }
 function accept(next){
   const playEffects=captureTableEffects(state,next,{gem,cardHTML});
+  const soundCues=stateSoundCues(state,next);
   const screen=x=>!x?.room?'home':x.room.game?'game':'lobby';
   const screenChanged=screen(state)!==screen(next);
   const key=next.room?`${next.room.code}:${next.room.version}`:'home';
@@ -42,7 +46,7 @@ function accept(next){
   settingsControls.cancel();
   if(state?.room?.code!==next.room?.code||next.room?.game)settingsExpanded=false;
   if(state?.room?.code!==next.room?.code||next.room?.game||next.room?.hostId!==next.me.id)scoreDraft=null;
-  state=next;render();playEffects();if(screenChanged)window.scrollTo(0,0);if(removed)toast('你已离开房间');
+  state=next;render();playEffects();soundCues.forEach((cue,index)=>index?setTimeout(()=>soundPlayer.play(cue),420*index):soundPlayer.play(cue));if(screenChanged)window.scrollTo(0,0);if(removed)toast('你已离开房间');
 }
 async function mutate(path,body={}){
   if(busy)return;busy=true;document.body.classList.add('busy');
@@ -55,7 +59,7 @@ function connect(){
   source.onerror=()=>{connected=false;renderConnection();};
 }
 function renderConnection(){const el=$('#connection');if(el){el.className=`connection ${connected?'':'offline'}`;el.innerHTML=`<i></i>${connected?'已连接':'连接中…'}`;}}
-function header(){return `<header class="header"><a class="brand" href="${esc(basePath)}" aria-label="璀璨宝石首页"><img src="./assets/mark.svg" width="31" height="31" alt=""><span>璀璨宝石<small>SPLENDOR · PRIVATE TABLE</small></span></a><nav><span id="connection" class="connection"><i></i>已连接</span><button class="text-btn" data-do="rules">${icon('book')}<span>游戏规则</span></button><button class="profile" data-do="profile"><span class="avatar small">${esc(state.me.name.slice(0,1))}</span><span>${esc(state.me.name)}</span><span class="edit-mark">⌑</span></button></nav></header>`;}
+function header(){return `<header class="header"><a class="brand" href="${esc(basePath)}" aria-label="璀璨宝石首页"><img src="./assets/mark.svg" width="31" height="31" alt=""><span>璀璨宝石<small>SPLENDOR · PRIVATE TABLE</small></span></a><nav><span id="connection" class="connection"><i></i>已连接</span><button class="text-btn sound-toggle" data-do="toggle-sound" aria-pressed="${!soundMuted}" aria-label="${soundMuted?'开启':'关闭'}音效" title="${soundMuted?'开启':'关闭'}音效">${icon(soundMuted?'soundOff':'soundOn')}<span>音效</span></button><button class="text-btn" data-do="rules">${icon('book')}<span>游戏规则</span></button><button class="profile" data-do="profile"><span class="avatar small">${esc(state.me.name.slice(0,1))}</span><span>${esc(state.me.name)}</span><span class="edit-mark">⌑</span></button></nav></header>`;}
 function footer(){return `<footer><span>为相聚而开的一张桌</span><span>基础版 · 2–4 人 · 原创插画</span><span>SPLENDOR / 私人桌游室</span></footer>`;}
 function cardHTML(card,{hero=false,disabled=false}={}){
   const art=['mine','harbor','estate'][card.level-1];
@@ -242,6 +246,7 @@ document.addEventListener('pointerout',event=>{
 document.addEventListener('focusin',event=>{if(!shouldShowContextTooltip({mobile:mobileTableLayout,trigger:'focus'}))return;const target=event.target.closest('[data-card],[data-noble-info]');if(target)showContextTooltip(target);});
 document.addEventListener('focusout',hideCardTooltip);
 document.addEventListener('pointerdown',event=>{
+  soundPlayer.unlock();
   if(event.pointerType!=='touch')return;
   pressedElement=event.target.closest('[data-card],[data-noble-info]');longPressShown=false;
   if(pressedElement&&!pressedElement.disabled)longPressTracker.start(pressedElement,{x:event.clientX,y:event.clientY});
@@ -285,6 +290,7 @@ document.addEventListener('submit',async e=>{
   if(e.target.id==='profile-form'){e.preventDefault();const name=$('#profile-name').value;try{const next=await api('/api/session',{name});storage.set('splendor.nickname',next.me.name);closeDialog();accept(next);toast('昵称已保存');}catch(error){toast(error.message);}}
 });
 document.addEventListener('keydown',e=>{
+  soundPlayer.unlock();
   if(!e.target.matches('[data-market-view]')||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
   e.preventDefault();
   const current=Number(e.target.dataset.marketView),next=e.key==='Home'?0:e.key==='End'?2:e.key==='ArrowLeft'?Math.max(0,current-1):Math.min(2,current+1);
@@ -309,6 +315,7 @@ document.addEventListener('click',async e=>{
   if('reserve'in d){const action=d.reserve?{type:'reserve',cardId:d.reserve}:{type:'reserve',level:Number(d.level)};closeDialog();return act(action);}
   if(d.ai){closeDialog();return mutate('/api/room/ai',{mode:d.ai});}
   switch(d.do){
+    case 'toggle-sound':soundMuted=!soundMuted;storage.set('splendor.sound-muted',String(soundMuted));render();if(!soundMuted)soundPlayer.play('turn');toast(soundMuted?'音效已关闭':'音效已开启');return;
     case 'toggle-settings':settingsExpanded=!settingsExpanded;render();document.querySelector('.settings-toggle')?.focus();return;
     case 'table-menu':return openDialog(`<h2>房间 ${state.room.code} · 第 ${state.room.game.round} 轮</h2><div class="table-menu"><button class="btn secondary" data-do="invite">${icon('copy')}复制邀请链接</button><button class="btn secondary" data-do="profile">${icon('users')}修改昵称</button><button class="btn secondary" data-do="rules">${icon('book')}游戏规则</button>${state.room.hostId===state.me.id&&state.room.game.status==='playing'?'<button class="btn secondary" data-do="finish">结束本局</button>':''}<button class="btn secondary" data-do="leave">${icon('exit')}离开房间</button>${state.room.hostId===state.me.id?state.room.players.filter(p=>p.id!==state.me.id&&!p.ai).map(p=>`<button class="btn secondary" data-kick="${p.id}">${icon('close')}移出 ${esc(p.name)}</button>`).join(''):''}</div>${state.room.aiStatus?.notice?`<p>${esc(state.room.aiStatus.notice)}</p>`:''}`);
     case 'collection':{const me=state.room.game.players.find(p=>p.id===state.me.id);return openDialog(`<div class="eyebrow">YOUR DEVELOPMENT CARDS</div><h2>已购发展卡 · ${me.cards.length} 张</h2><div class="collection-grid">${me.cards.map(c=>cardHTML(c,{disabled:true})).join('')||'<p class="muted">购入的卡牌将汇集于此。</p>'}</div>`);}

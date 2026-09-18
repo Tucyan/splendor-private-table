@@ -53,6 +53,8 @@ test('HTTP validates session, JSON, origin and static file boundaries',async t=>
   const {base,client}=await fixture(t);
   assert.equal((await client()('/api/rooms',{})).status,401);
   const page=await fetch(base+'/');assert.equal(page.status,200);assert.match(await page.text(),/璀璨宝石/);
+  const audio=await fetch(base+'/assets/audio/chip-lay-2.ogg');
+  assert.equal(audio.status,200);assert.match(audio.headers.get('content-type'),/^audio\/ogg/);assert.ok((await audio.arrayBuffer()).byteLength>1000);
   assert.equal((await fetch(base+'/.env')).status,404);
   assert.equal((await fetch(base+'/src/server.js')).status,404);
   assert.equal((await fetch(base+'/api/session',{method:'POST',headers:{origin:'https://evil.example','content-type':'application/json'},body:'{}'})).status,403);

@@ -14,7 +14,8 @@
   .at-table .brand{font-size:17px;gap:6px;white-space:nowrap}
   .at-table .brand img{width:23px;height:23px}
   .at-table .brand small,.at-table .header nav>.text-btn,.at-table .header .profile,.at-table footer{display:none}
-  .at-table .header nav{margin-right:88px}
+  .at-table .header nav{margin-right:88px;gap:4px}
+  .at-table .header nav>.sound-toggle{display:inline-flex;width:30px;height:30px;padding:0;font-size:0}
   .at-table .connection{display:flex!important;font-size:9px;white-space:nowrap}
   .mobile-table-tools{display:flex;gap:2px;position:absolute;right:max(6px,env(safe-area-inset-right));top:env(safe-area-inset-top);height:38px}
   .mobile-table-tools .icon-btn{width:40px;height:38px}
