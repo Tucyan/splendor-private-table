@@ -1,10 +1,12 @@
 const PROTECTED_BODY_FIELDS = ['model', 'messages', 'response_format', 'stream'];
 const VALID_MESSAGE_ROLES = new Set(['system', 'developer', 'user', 'assistant', 'tool', 'function']);
+const INTERNAL_ERRORS = new WeakSet();
 
 function createError(code, message, extras = {}) {
   const error = new Error(message);
   error.code = code;
   Object.assign(error, extras);
+  INTERNAL_ERRORS.add(error);
   return error;
 }
 
@@ -20,6 +22,8 @@ function safeText(value, apiKey, messages = []) {
     if (message && typeof message.content === 'string' && message.content) {
       const serializedMessage = JSON.stringify(message);
       if (serializedMessage) text = text.split(serializedMessage).join('[REDACTED]');
+      const serializedContent = JSON.stringify(message.content);
+      if (serializedContent) text = text.split(serializedContent).join('[REDACTED]');
     }
   }
   if (hasText(apiKey)) {
@@ -200,6 +204,9 @@ export async function requestLlmJson({
     } catch (cause) {
       if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
       if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
+      if (cause instanceof SyntaxError) {
+        throw createError('LLM_INVALID_JSON', 'LLM response was not valid JSON');
+      }
       throw createError('LLM_NETWORK_ERROR', 'LLM network request failed', {
         cause: safeCause(cause, config.apiKey, messages),
       });
@@ -229,11 +236,7 @@ export async function requestLlmJson({
   } catch (error) {
     if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
     if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
-    if (error?.code === 'LLM_NETWORK_ERROR'
-      || (typeof error?.code === 'string' && /^LLM_HTTP_\d+$/.test(error.code))
-      || error?.code === 'LLM_TRUNCATED'
-      || error?.code === 'LLM_EMPTY_CONTENT'
-      || error?.code === 'LLM_INVALID_JSON') {
+    if (error && typeof error === 'object' && INTERNAL_ERRORS.has(error)) {
       throw error;
     }
     throw createError('LLM_NETWORK_ERROR', 'LLM network request failed', {

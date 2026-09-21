@@ -299,6 +299,22 @@ test('classifies response body read failures as network errors, not invalid JSON
   );
 });
 
+test('classifies a successful Response JSON syntax failure as invalid JSON', async () => {
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages,
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => { throw new SyntaxError('Unexpected token from malformed response'); },
+      }),
+    }),
+    (error) => error.code === 'LLM_INVALID_JSON',
+  );
+});
+
 test('redacts serialized messages with escaped quotes and newlines from HTTP errors', async () => {
   const sensitiveMessages = [{ role: 'user', content: 'Return JSON with "quoted" data\nand test-secret-key.' }];
   const serializedMessages = JSON.stringify(sensitiveMessages);
@@ -312,6 +328,25 @@ test('redacts serialized messages with escaped quotes and newlines from HTTP err
     (error) => error.code === 'LLM_HTTP_400'
       && error.message.length < 500
       && !error.message.includes(serializedMessages)
+      && !error.message.includes('quoted')
+      && !error.message.includes('test-secret-key'),
+  );
+});
+
+test('redacts JSON.stringify of an individual message content from HTTP errors', async () => {
+  const content = 'JSON payload with "quoted" text\nand test-secret-key';
+  const sensitiveMessages = [{ role: 'user', content }];
+  const serializedContent = JSON.stringify(content);
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages: sensitiveMessages,
+      fetchImpl: async () => response({ error: { message: `provider echoed ${serializedContent}` } }, 400),
+    }),
+    (error) => error.code === 'LLM_HTTP_400'
+      && error.message.length < 500
+      && !error.message.includes(serializedContent)
       && !error.message.includes('quoted')
       && !error.message.includes('test-secret-key'),
   );
@@ -335,21 +370,42 @@ test('does not trust an arbitrary network error name', async () => {
   );
 });
 
-test('rejects malformed request types with LLM_INVALID_REQUEST while preserving JSON prompt errors', async () => {
+test('wraps a provider-shaped external error instead of trusting its code', async () => {
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages,
+      fetchImpl: async () => {
+        const error = new Error('provider failed with test-secret-key');
+        error.code = 'LLM_HTTP_401';
+        throw error;
+      },
+    }),
+    (error) => error.code === 'LLM_NETWORK_ERROR'
+      && error.cause?.message === 'provider failed with [REDACTED]'
+      && !error.message.includes('test-secret-key'),
+  );
+});
+
+test('rejects malformed request types before fetch with LLM_INVALID_REQUEST', async () => {
   const invalidInputs = [
-    { model: 42, messages },
-    { config: { ...config, apiKey: 42 }, model: 'm', messages },
-    { config: { ...config, apiUrl: 42 }, model: 'm', messages },
-    { model: 'm', messages: [null] },
-    { model: 'm', messages: [{ role: 'user', content: 'JSON' }, { role: null, content: 'JSON' }] },
-    { model: 'm', messages: [{ role: 'user', content: 'JSON' }, { role: 'assistant', content: 42 }] },
-    { config, model: 'm', messages: [{ role: 'not-a-chat-role', content: 'JSON' }] },
+    { label: 'invalid model', model: 42, messages },
+    { label: 'null message', model: 'm', messages: [null] },
+    { label: 'mixed invalid messages', model: 'm', messages: [{ role: 'user', content: 'JSON' }, { role: 'assistant', content: 42 }] },
+    { label: 'invalid API key type', config: { ...config, apiKey: 42 }, model: 'm', messages },
+    { label: 'invalid API URL type', config: { ...config, apiUrl: 42 }, model: 'm', messages },
   ];
   for (const input of invalidInputs) {
+    let fetchCalls = 0;
     await assert.rejects(
-      requestLlmJson({ ...input, fetchImpl: async () => response({}) }),
+      requestLlmJson({ config: input.config ?? config, model: input.model, messages: input.messages, fetchImpl: async () => {
+        fetchCalls += 1;
+        return response({});
+      } }),
       (error) => error.code === 'LLM_INVALID_REQUEST',
     );
+    assert.equal(fetchCalls, 0, `${input.label} must not call fetch`);
   }
   await assert.rejects(
     requestLlmJson({ config, model: 'm', messages: [{ role: 'user', content: 'plain text' }], fetchImpl: async () => response({}) }),
