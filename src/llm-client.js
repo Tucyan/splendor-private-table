@@ -14,15 +14,29 @@ function hasText(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
 
+function safeJsonStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
 function safeText(value, apiKey, messages = []) {
-  let text = String(value ?? '');
-  const serializedMessages = messages.length > 0 ? JSON.stringify(messages) : null;
+  let text;
+  try {
+    text = String(value ?? '');
+  } catch {
+    text = '[unavailable error detail]';
+  }
+  const safeMessages = Array.isArray(messages) ? messages : [];
+  const serializedMessages = safeMessages.length > 0 ? safeJsonStringify(safeMessages) : null;
   if (serializedMessages) text = text.split(serializedMessages).join('[REDACTED]');
-  for (const message of messages) {
+  for (const message of safeMessages) {
     if (message && typeof message.content === 'string' && message.content) {
-      const serializedMessage = JSON.stringify(message);
+      const serializedMessage = safeJsonStringify(message);
       if (serializedMessage) text = text.split(serializedMessage).join('[REDACTED]');
-      const serializedContent = JSON.stringify(message.content);
+      const serializedContent = safeJsonStringify(message.content);
       if (serializedContent) text = text.split(serializedContent).join('[REDACTED]');
     }
   }
@@ -32,7 +46,7 @@ function safeText(value, apiKey, messages = []) {
   text = text.replace(/authorization\s*:\s*[^\s"'`,}]+/gi, '[REDACTED]');
   text = text.replace(/authorization/gi, '[REDACTED]');
   text = text.replace(/Bearer\s+[^\s"'`,}]+/gi, 'Bearer [REDACTED]');
-  for (const message of messages) {
+  for (const message of safeMessages) {
     if (message && typeof message.content === 'string' && message.content) {
       text = text.split(message.content).join('[REDACTED]');
     }
@@ -172,6 +186,12 @@ export async function requestLlmJson({
     if (field === 'response_format') body.response_format = { type: 'json_object' };
     if (field === 'stream') body.stream = false;
   }
+  let bodyJson;
+  try {
+    bodyJson = JSON.stringify(body);
+  } catch {
+    throw createError('LLM_INVALID_REQUEST', 'LLM request body is not serializable');
+  }
 
   try {
     const response = await fetchImpl(config.apiUrl, {
@@ -180,7 +200,7 @@ export async function requestLlmJson({
         Authorization: `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: bodyJson,
       signal: controller.signal,
     });
     if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');

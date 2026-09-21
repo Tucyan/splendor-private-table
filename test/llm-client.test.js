@@ -424,3 +424,41 @@ test('reports truncation before checking whether completion content is empty', a
     (error) => error.code === 'LLM_TRUNCATED',
   );
 });
+
+test('rejects cyclic message metadata before fetch with a stable invalid-request error', async () => {
+  const cyclicMetadata = {};
+  cyclicMetadata.self = cyclicMetadata;
+  const cyclicMessages = [{ role: 'user', content: 'Return JSON please.', metadata: cyclicMetadata }];
+  let fetchCalls = 0;
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages: cyclicMessages,
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        return successfulResponse();
+      },
+    }),
+    (error) => error.code === 'LLM_INVALID_REQUEST' && !error.message.includes('test-secret-key'),
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test('rejects BigInt message metadata before fetch without leaking the API key', async () => {
+  const bigintMessages = [{ role: 'user', content: 'Return JSON please.', metadata: { count: 1n } }];
+  let fetchCalls = 0;
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages: bigintMessages,
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        return successfulResponse();
+      },
+    }),
+    (error) => error.code === 'LLM_INVALID_REQUEST' && !error.message.includes('test-secret-key'),
+  );
+  assert.equal(fetchCalls, 0);
+});
