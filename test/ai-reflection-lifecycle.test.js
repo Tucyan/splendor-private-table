@@ -65,7 +65,7 @@ test('missing lesson evidence is rejected and recorded without committing memory
   let calls = 0;
   const coordinator = new ReflectionCoordinator({ store, llmConfig, fetchImpl: async () => {
     calls++;
-    return completion({ operations: [{ type: 'add', recommendation: 'x' }] });
+    return completion({ operations: [{ type: 'add', lesson: { recommendation: 'x' } }] });
   } });
   const incomplete = snapshot('missing-evidence');
   const result = await coordinator.reflect(incomplete);

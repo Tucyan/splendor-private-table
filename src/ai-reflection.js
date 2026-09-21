@@ -1,9 +1,9 @@
-import { randomUUID } from 'node:crypto';
 import { AiMemoryStore } from './ai-memory-store.js';
 import { requestLlmJson, llmReasonCode } from './llm-client.js';
+import { validateExperienceOperations } from './llm-experience-operations.js';
 
 const MAX_EVIDENCE = 12;
-const MAX_OPERATIONS = 8;
+const MAX_EXISTING_LESSONS = 8;
 
 const text = (value, limit = 500) => String(value ?? '').slice(0, limit);
 
@@ -19,34 +19,30 @@ export function createEndSnapshot(game, { gameId, players = [] } = {}) {
   };
 }
 
-export function validateReflectionResponse(value, { requireEvidence = false, gameId = '' } = {}) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('reflection response must be an object');
-  if (!Array.isArray(value.operations)) throw new Error('reflection response operations must be an array');
-  const operations = value.operations.slice(0, MAX_OPERATIONS);
-  const normalized = operations.map((operation, index) => {
-    if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
-      throw new Error('reflection operation must be an object');
-    }
-    const type = text(operation.type || 'add', 40);
-    if (type !== 'add') throw new Error(`reflection operation type is not supported yet: ${type}`);
-    const lesson = operation.lesson && typeof operation.lesson === 'object' && !Array.isArray(operation.lesson) ? operation.lesson : operation;
-    return {
-      id: text(lesson.id || `lesson-${index}-${randomUUID()}`, 120),
-      playerCount: Number(lesson.playerCount) || 2, targetScore: Number(lesson.targetScore) || 15,
-      phase: text(lesson.phase || 'unknown', 40), trigger: text(lesson.trigger, 500),
-      recommendation: text(lesson.recommendation, 500), counterexample: text(lesson.counterexample, 500),
-      evidenceGameId: text(operation.evidenceGameId ?? lesson.evidenceGameId, 120), sampleCount: 1,
-      successCount: 0, failureCount: 0, confidence: Math.max(0, Math.min(1, Number(lesson.confidence) || 0)), status: 'candidate',
-    };
-  });
-  if (requireEvidence) {
-    for (const lesson of normalized) {
-      if (!lesson.evidenceGameId || (gameId && lesson.evidenceGameId !== String(gameId))) {
-        throw new Error('reflection lesson evidence is required and must reference the current game');
-      }
-    }
-  }
-  return normalized;
+// The model may only reference lessons it can see: id, applicability, text, confidence and status.
+export function selectRelevantLessons(lessons, snapshot, { limit = MAX_EXISTING_LESSONS } = {}) {
+  const playerCount = (snapshot?.turnOrder || []).length || (snapshot?.players || []).length;
+  const targetScore = Number(snapshot?.finishScore);
+  return (lessons || [])
+    .map((lesson, index) => ({
+      lesson,
+      index,
+      relevance: (lesson.playerCount === playerCount ? 1 : 0) + (lesson.targetScore === targetScore ? 1 : 0),
+    }))
+    .filter(entry => entry.lesson && (entry.lesson.status === 'candidate' || entry.lesson.status === 'active'))
+    .sort((a, b) => b.relevance - a.relevance || b.index - a.index)
+    .slice(0, limit)
+    .map(({ lesson }) => ({
+      id: lesson.id,
+      playerCount: lesson.playerCount,
+      targetScore: lesson.targetScore,
+      phase: lesson.phase,
+      trigger: lesson.trigger,
+      recommendation: lesson.recommendation,
+      counterexample: lesson.counterexample,
+      confidence: lesson.confidence,
+      status: lesson.status,
+    }));
 }
 
 export function buildReflectionPrompt(snapshot, { existingLessons = [] } = {}) {
@@ -86,20 +82,24 @@ export class ReflectionCoordinator {
     if (queued.status === 'completed') return { status: 'saved', committed: false, lessons: queued.lessons || 0 };
     if ((queued.attempts || 0) >= this.maxAttempts) return { status: 'failed', reason: 'max_attempts' };
     try {
+      // Read existing lessons before the request so the model sees what it may revise.
+      // Network traffic stays outside the memory lock; applyReflection re-validates inside it.
+      const memory = await this.store.readMemory().catch(() => null);
+      const existingLessons = selectRelevantLessons(memory?.lessons || [], snapshot);
       const result = await this.requestJson({
         config: { ...this.llmConfig, timeoutMs: this.timeoutMs },
         model: this.llmConfig.reflectionModel,
-        messages: buildReflectionPrompt(snapshot),
+        messages: buildReflectionPrompt(snapshot, { existingLessons }),
         maxTokens: 512,
         temperature: 0.2,
         fetchImpl: this.fetchImpl,
         signal,
       });
       // result.data is the parsed choices[0].message.content payload, never the HTTP envelope.
-      const lessons = validateReflectionResponse(result.data, { requireEvidence: true, gameId: snapshot.gameId });
-      const committed = await this.store.commitExperience(snapshot.gameId, lessons);
-      await this.store.saveJob(snapshot.gameId, { ...queued, status: 'completed', attempts: (queued.attempts || 0) + 1, lessons: lessons.length });
-      return { status: 'saved', committed: committed.committed, lessons: lessons.length };
+      const operations = validateExperienceOperations(result.data, { gameId: snapshot.gameId, existingLessons });
+      const committed = await this.store.applyReflection(snapshot.gameId, operations);
+      await this.store.saveJob(snapshot.gameId, { ...queued, status: 'completed', attempts: (queued.attempts || 0) + 1, lessons: operations.length });
+      return { status: 'saved', committed: committed.committed, lessons: operations.length };
     } catch (error) {
       const reasonCode = llmReasonCode(error);
       if ((queued.attempts || 0) < this.maxAttempts) {

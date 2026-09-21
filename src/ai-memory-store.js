@@ -5,10 +5,12 @@ import { mkdir, open, readFile, readdir, rename, rm, writeFile } from 'node:fs/p
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { applyExperienceOperations } from './llm-experience-operations.js';
 
 export const DEFAULT_MEMORY_DIR = resolve(process.cwd(), 'data/ai-memory/deepseek-advanced');
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const MAX_ATTEMPTS = 3;
+const MAX_EVIDENCE_IDS = 25;
 const LESSON_STATUSES = new Set(['candidate', 'active', 'retired']);
 const PROCESS_QUEUES = new Map();
 
@@ -48,6 +50,36 @@ export function validateMemorySnapshot(value) {
     for (const key of ['playerCount', 'targetScore', 'sampleCount', 'successCount', 'failureCount', 'confidence']) {
       if (!Number.isFinite(lesson[key])) throw invalid(`lesson ${key}`);
     }
+    for (const key of ['phase', 'trigger', 'recommendation', 'counterexample', 'retirementReason']) {
+      if (typeof lesson[key] !== 'string') throw invalid(`lesson ${key}`);
+    }
+    for (const key of ['createdAt', 'updatedAt']) {
+      if (lesson[key] !== null && typeof lesson[key] !== 'string') throw invalid(`lesson ${key}`);
+    }
+    if ('evidenceGameId' in lesson && typeof lesson.evidenceGameId !== 'string') throw invalid('lesson evidenceGameId');
+    if (!Array.isArray(lesson.evidenceGameIds) || lesson.evidenceGameIds.some(item => typeof item !== 'string')) {
+      throw invalid('lesson evidenceGameIds');
+    }
+    if (!LESSON_STATUSES.has(lesson.status)) throw invalid('lesson status');
+  }
+  return true;
+}
+
+function validateV1Snapshot(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid('object required');
+  if (value.schemaVersion !== 1) throw invalid('schemaVersion');
+  if (!Number.isInteger(value.revision) || value.revision < 0) throw invalid('revision');
+  if (typeof value.strategyVersion !== 'string' || !value.strategyVersion) throw invalid('strategyVersion');
+  if (value.updatedAt !== null && typeof value.updatedAt !== 'string') throw invalid('updatedAt');
+  if (!Array.isArray(value.processedGameIds) || value.processedGameIds.some(item => typeof item !== 'string')) {
+    throw invalid('processedGameIds');
+  }
+  if (!Array.isArray(value.lessons)) throw invalid('lessons');
+  for (const lesson of value.lessons) {
+    if (!lesson || typeof lesson !== 'object' || typeof lesson.id !== 'string' || !lesson.id) throw invalid('lesson id');
+    for (const key of ['playerCount', 'targetScore', 'sampleCount', 'successCount', 'failureCount', 'confidence']) {
+      if (!Number.isFinite(lesson[key])) throw invalid(`lesson ${key}`);
+    }
     for (const key of ['phase', 'trigger', 'recommendation', 'counterexample', 'evidenceGameId']) {
       if (typeof lesson[key] !== 'string') throw invalid(`lesson ${key}`);
     }
@@ -56,8 +88,28 @@ export function validateMemorySnapshot(value) {
   return true;
 }
 
+// v1 snapshots are migrated in memory only; the next successful commit writes v2 atomically.
+function migrateSnapshot(value) {
+  if (value?.schemaVersion !== 1) return value;
+  validateV1Snapshot(value);
+  return {
+    ...value,
+    schemaVersion: SCHEMA_VERSION,
+    lessons: value.lessons.map(oldLesson => ({
+      ...oldLesson,
+      createdAt: value.updatedAt,
+      updatedAt: value.updatedAt,
+      evidenceGameIds: oldLesson.evidenceGameId ? [oldLesson.evidenceGameId] : [],
+      retirementReason: '',
+    })),
+  };
+}
+
 function normalizeLesson(item) {
   if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !item.id) throw invalid('lesson');
+  const legacyEvidence = typeof item.evidenceGameId === 'string' && item.evidenceGameId ? [item.evidenceGameId.slice(0, 120)] : [];
+  const evidenceGameIds = (Array.isArray(item.evidenceGameIds) ? item.evidenceGameIds : legacyEvidence)
+    .filter(id => typeof id === 'string').map(id => id.slice(0, 120)).slice(-MAX_EVIDENCE_IDS);
   const result = {
     id: item.id.slice(0, 120),
     playerCount: Math.max(1, Math.floor(number(item.playerCount, 2))),
@@ -72,6 +124,10 @@ function normalizeLesson(item) {
     failureCount: Math.max(0, Math.floor(number(item.failureCount, 0))),
     confidence: Math.max(0, Math.min(1, number(item.confidence, 0))),
     status: LESSON_STATUSES.has(item.status) ? item.status : 'candidate',
+    createdAt: typeof item.createdAt === 'string' ? item.createdAt : null,
+    updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : null,
+    evidenceGameIds,
+    retirementReason: String(item.retirementReason || '').slice(0, 500),
   };
   return result;
 }
@@ -118,6 +174,7 @@ export class AiMemoryStore {
     const text = await readFile(path, 'utf8');
     let value;
     try { value = JSON.parse(text); } catch (error) { throw corruptError(error); }
+    try { value = migrateSnapshot(value); } catch (error) { throw corruptError(error); }
     try { validateMemorySnapshot(value); } catch (error) { throw corruptError(error); }
     return value;
   }
@@ -250,6 +307,8 @@ export class AiMemoryStore {
       prior.confidence = Math.max(0, Math.min(1, (prior.confidence * priorSamples + item.confidence * item.sampleCount) / prior.sampleCount));
       if (item.status === 'active' || prior.status === 'retired') prior.status = item.status;
       if (item.evidenceGameId && !prior.evidenceGameId) prior.evidenceGameId = item.evidenceGameId;
+      prior.evidenceGameIds = [...new Set([...prior.evidenceGameIds, ...item.evidenceGameIds])].slice(-MAX_EVIDENCE_IDS);
+      prior.updatedAt = now();
     }
     return merged;
   }
@@ -275,6 +334,22 @@ export class AiMemoryStore {
   }
 
   commitLessons(gameId, lessons = []) { return this.commitExperience(gameId, lessons); }
+
+  // Applies pre-validated reflection operations atomically: FIFO queue -> directory lock ->
+  // fresh snapshot -> idempotency check -> per-target re-validation -> revision bump -> backup -> atomic replace.
+  async applyReflection(gameId, operations = []) {
+    return this.enqueue(() => this._withLock(async () => {
+      const current = await this._readUnlocked();
+      const memory = current.memory;
+      if (memory.processedGameIds.includes(String(gameId))) return { committed: false, applied: 0, memory };
+      if (this.beforeCommit) await this.beforeCommit(String(gameId));
+      const next = applyExperienceOperations(memory, operations, { gameId: String(gameId), now: now() });
+      validateMemorySnapshot(next);
+      await this._backupCurrent();
+      await this._writeJsonAtomic(this.memoryPath, next);
+      return { committed: true, applied: operations.length, memory: next };
+    }));
+  }
 
   _recordId(gameId) {
     const value = String(gameId);
