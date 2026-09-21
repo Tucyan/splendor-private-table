@@ -18,6 +18,7 @@ test('advanced chooser uses the injected advanced model and returns only an orig
   }});
   assert.equal(request.config,llmConfig);
   assert.equal(request.model,'advanced-model');
+  assert.equal(request.maxTokens,1024);
   assert.ok(request.messages[1].content.length < 30000);
   assert.equal(result.action,actions[0]);
   assert.equal(result.source,'llm-advanced');

@@ -16,7 +16,7 @@ export async function chooseAdvancedAction(game, playerId, actions, { llmConfig,
         { role:'system',content:'只返回 JSON：{"actionIndex": number, "plan": string}。actionIndex 必须对应候选动作。' },
         { role:'user',content:JSON.stringify({ context:advancedContext,actions:actions.map((action,index)=>({index,action})) }) },
       ],
-      maxTokens:256,
+      maxTokens:1024,
       temperature:0.3,
       signal,
     });

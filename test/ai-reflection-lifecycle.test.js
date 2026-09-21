@@ -171,7 +171,7 @@ test('concurrent advanced start requests share one synchronization barrier', asy
   assert.equal(store.room(host).game.status, 'playing');
 });
 
-test('finishing an advanced game commits the gameId and reports zero changes for empty operations', async t => {
+test('host-ended advanced games do not save reflection experience', async t => {
   const memoryStore = await tempStore(t);
   const store = new RoomStore({ llmConfig, memoryStore, fetchImpl: async () => completion({ operations: [] }) });
   t.after(() => store.close());
@@ -184,11 +184,33 @@ test('finishing an advanced game commits the gameId and reports zero changes for
   const room = store.room(host);
   store.finish(host);
   assert.equal(room.game.status, 'finished');
+  await delay(30);
+  assert.equal(room.reflectionStatus, null);
+  const memory = await memoryStore.readMemory();
+  assert.deepEqual(memory.processedGameIds, []);
+  assert.equal(memory.lessons.length, 0);
+});
+
+test('normally completed advanced games save reflection experience', async t => {
+  const memoryStore = await tempStore(t);
+  const store = new RoomStore({ llmConfig, memoryStore, fetchImpl: async () => completion({ operations: [] }) });
+  t.after(() => store.close());
+  const host = store.register(null, '房主');
+  const guest = store.register(null, '来宾');
+  store.create(host);
+  store.join(guest, store.room(host).code);
+  store.addAI(host, 'llm-advanced');
+  const room = store.room(host);
+  store.start(host);
+  room.gameId = 'normal-finished';
+  room.game.status = 'finished';
+  room.game.endReason = 'normal';
+  room.game.winners = [host.id];
+  room.reflectionStatus = { state: 'syncing', status: 'syncing' };
+  store.queueReflection(room);
   for (let i = 0; i < 100 && room.reflectionStatus?.state !== 'saved'; i++) await delay(5);
   assert.deepEqual(room.reflectionStatus, { state: 'saved', status: 'saved', lessons: 0 });
-  const memory = await memoryStore.readMemory();
-  assert.deepEqual(memory.processedGameIds, [room.gameId]);
-  assert.equal(memory.lessons.length, 0);
+  assert.deepEqual((await memoryStore.readMemory()).processedGameIds, ['normal-finished']);
 });
 
 test('basic LLM and local starts bypass reflection synchronization', async t => {
