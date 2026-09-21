@@ -429,12 +429,14 @@ test('rejects cyclic message metadata before fetch with a stable invalid-request
   const cyclicMetadata = {};
   cyclicMetadata.self = cyclicMetadata;
   const cyclicMessages = [{ role: 'user', content: 'Return JSON please.', metadata: cyclicMetadata }];
+  const lifecycle = trackedAbortSignal();
   let fetchCalls = 0;
   await assert.rejects(
     requestLlmJson({
       config,
       model: 'm',
       messages: cyclicMessages,
+      signal: lifecycle.signal,
       fetchImpl: async () => {
         fetchCalls += 1;
         return successfulResponse();
@@ -443,16 +445,19 @@ test('rejects cyclic message metadata before fetch with a stable invalid-request
     (error) => error.code === 'LLM_INVALID_REQUEST' && !error.message.includes('test-secret-key'),
   );
   assert.equal(fetchCalls, 0);
+  assert.deepEqual(lifecycle.counts, { added: 0, removed: 0 });
 });
 
 test('rejects BigInt message metadata before fetch without leaking the API key', async () => {
   const bigintMessages = [{ role: 'user', content: 'Return JSON please.', metadata: { count: 1n } }];
+  const lifecycle = trackedAbortSignal();
   let fetchCalls = 0;
   await assert.rejects(
     requestLlmJson({
       config,
       model: 'm',
       messages: bigintMessages,
+      signal: lifecycle.signal,
       fetchImpl: async () => {
         fetchCalls += 1;
         return successfulResponse();
@@ -461,4 +466,19 @@ test('rejects BigInt message metadata before fetch without leaking the API key',
     (error) => error.code === 'LLM_INVALID_REQUEST' && !error.message.includes('test-secret-key'),
   );
   assert.equal(fetchCalls, 0);
+  assert.deepEqual(lifecycle.counts, { added: 0, removed: 0 });
 });
+
+function trackedAbortSignal() {
+  const counts = { added: 0, removed: 0 };
+  const signal = {
+    aborted: false,
+    addEventListener() {
+      counts.added += 1;
+    },
+    removeEventListener() {
+      counts.removed += 1;
+    },
+  };
+  return { signal, counts };
+}

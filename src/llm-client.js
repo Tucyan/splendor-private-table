@@ -148,28 +148,6 @@ export async function requestLlmJson({
 }) {
   validateInput({ config, model, messages });
 
-  const controller = new AbortController();
-  let timedOut = false;
-  let externallyAborted = false;
-  let timer;
-  const onExternalAbort = () => {
-    externallyAborted = true;
-    controller.abort();
-  };
-
-  if (signal?.aborted) {
-    throw createError('LLM_ABORTED', 'LLM request was cancelled');
-  }
-  if (signal) signal.addEventListener('abort', onExternalAbort, { once: true });
-  const timeoutMs = Number(config.timeoutMs);
-  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
-    timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, timeoutMs);
-    timer.unref?.();
-  }
-
   const body = {
     ...(config.extraBody && typeof config.extraBody === 'object' ? config.extraBody : {}),
     model,
@@ -191,6 +169,28 @@ export async function requestLlmJson({
     bodyJson = JSON.stringify(body);
   } catch {
     throw createError('LLM_INVALID_REQUEST', 'LLM request body is not serializable');
+  }
+
+  const controller = new AbortController();
+  let timedOut = false;
+  let externallyAborted = false;
+  let timer;
+  const onExternalAbort = () => {
+    externallyAborted = true;
+    controller.abort();
+  };
+
+  if (signal?.aborted) {
+    throw createError('LLM_ABORTED', 'LLM request was cancelled');
+  }
+  if (signal) signal.addEventListener('abort', onExternalAbort, { once: true });
+  const timeoutMs = Number(config.timeoutMs);
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    timer.unref?.();
   }
 
   try {
