@@ -4,6 +4,5 @@ node_modules/
 *.zip
 test-results/
 .DS_Store
-data/ai-memory/deepseek-advanced/
 data/ai-memory/
 memory.json.tmp-*

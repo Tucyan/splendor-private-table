@@ -13,6 +13,7 @@ import {
 } from '../src/ai-memory-store.js';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/ai-memory-writer.js', import.meta.url));
+const REQUEUE_SCRIPT = fileURLToPath(new URL('../scripts/requeue-llm-reflections.js', import.meta.url));
 
 async function temporaryStore(t, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'splendor-ai-memory-'));
@@ -56,9 +57,38 @@ function runWriter(directory, gameId, lessonId, options = {}) {
   });
 }
 
+function runRequeue(directory, args = []) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [REQUEUE_SCRIPT, ...args], {
+      env: { ...process.env, LLM_MEMORY_DIR: directory },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      if (code === 0) resolve(JSON.parse(stdout));
+      else reject(new Error(`requeue exited ${code ?? signal}: ${stderr || stdout}`));
+    });
+  });
+}
+
 test('uses the default memory directory and accepts an explicit directory override', () => {
-  assert.match(DEFAULT_MEMORY_DIR, /data[\\/]ai-memory[\\/]deepseek-advanced$/);
+  assert.match(DEFAULT_MEMORY_DIR, /data[\\/]ai-memory[\\/]llm-advanced$/);
   assert.equal(new AiMemoryStore({ directory: 'custom-memory' }).directory.endsWith('custom-memory'), true);
+});
+
+test('uses LLM_MEMORY_DIR for the default when no directory option is provided', () => {
+  const previous = process.env.LLM_MEMORY_DIR;
+  process.env.LLM_MEMORY_DIR = 'env-memory';
+  try {
+    assert.equal(new AiMemoryStore().directory.endsWith('env-memory'), true);
+  } finally {
+    if (previous === undefined) delete process.env.LLM_MEMORY_DIR;
+    else process.env.LLM_MEMORY_DIR = previous;
+  }
 });
 
 test('creates and validates an empty schema version two snapshot', async t => {
@@ -355,4 +385,64 @@ test('tracks retry attempts and caps them at three', async t => {
 test('rejects jobs whose persisted attempt metadata exceeds the retry cap', async t => {
   const { store } = await temporaryStore(t);
   await assert.rejects(store.saveJob('too-many', { status: 'pending', attempts: 4 }), error => error.code === 'ATTEMPTS_INVALID');
+});
+
+test('requeues only failed jobs and protects processed game ids under the memory lock', async t => {
+  const { store } = await temporaryStore(t);
+  await store.saveJob('failed', { status: 'failed', attempts: 3, lastError: 'boom', payload: { keep: true } });
+  await store.saveJob('completed', { status: 'completed', attempts: 1, lastError: null });
+  await store.saveJob('processed', { status: 'failed', attempts: 3, lastError: 'old' });
+  await store.commitExperience('processed', []);
+
+  const result = await store.requeueFailedJobs({ allFailed: true });
+  assert.deepEqual(result.requeued, ['failed']);
+  assert.deepEqual(result.skipped, [{ gameId: 'processed', reason: 'processed' }]);
+  assert.deepEqual(await store.loadJob('failed'), {
+    gameId: 'failed', status: 'pending', attempts: 0, lastError: null, payload: { keep: true },
+  });
+  assert.deepEqual(await store.loadJob('completed'), {
+    gameId: 'completed', status: 'completed', attempts: 1, lastError: null,
+  });
+});
+
+test('requeueFailedJob serializes with concurrent memory commits', async t => {
+  const { store } = await temporaryStore(t);
+  await store.saveJob('failed', { status: 'failed', attempts: 3, lastError: 'boom' });
+  await Promise.all([
+    store.requeueFailedJob('failed'),
+    store.commitExperience('new-game', []),
+  ]);
+  assert.equal((await store.loadJob('failed')).status, 'pending');
+  assert.deepEqual((await store.readMemory()).processedGameIds, ['new-game']);
+});
+
+test('requeue CLI defaults to a dry-run without changing failed jobs', async t => {
+  const { directory, store } = await temporaryStore(t);
+  await store.saveJob('failed', { status: 'failed', attempts: 3, lastError: 'boom' });
+  const result = await runRequeue(directory);
+  assert.equal(result.dryRun, true);
+  assert.deepEqual(result.eligible, ['failed']);
+  assert.equal((await store.loadJob('failed')).status, 'failed');
+});
+
+test('requeue CLI applies one explicit failed job and leaves completed jobs untouched', async t => {
+  const { directory, store } = await temporaryStore(t);
+  await store.saveJob('failed', { status: 'failed', attempts: 3, lastError: 'boom' });
+  await store.saveJob('completed', { status: 'completed', attempts: 1, lastError: null });
+  const result = await runRequeue(directory, ['--apply', '--game-id', 'failed']);
+  assert.equal(result.dryRun, false);
+  assert.deepEqual(result.requeued, ['failed']);
+  assert.equal((await store.loadJob('failed')).status, 'pending');
+  assert.equal((await store.loadJob('completed')).status, 'completed');
+});
+
+test('requeue CLI applies all failed jobs but never requeues processed ids', async t => {
+  const { directory, store } = await temporaryStore(t);
+  await store.saveJob('first', { status: 'failed', attempts: 3, lastError: 'one' });
+  await store.saveJob('processed', { status: 'failed', attempts: 3, lastError: 'two' });
+  await store.commitExperience('processed', []);
+  const result = await runRequeue(directory, ['--apply', '--all-failed']);
+  assert.deepEqual(result.requeued, ['first']);
+  assert.deepEqual(result.skipped, [{ gameId: 'processed', reason: 'processed' }]);
+  assert.equal((await store.loadJob('processed')).status, 'failed');
 });

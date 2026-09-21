@@ -7,7 +7,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { applyExperienceOperations, validateExperienceOperations } from './llm-experience-operations.js';
 
-export const DEFAULT_MEMORY_DIR = resolve(process.cwd(), 'data/ai-memory/deepseek-advanced');
+export const DEFAULT_MEMORY_DIR = resolve(process.cwd(), 'data/ai-memory/llm-advanced');
 const SCHEMA_VERSION = 2;
 const MAX_ATTEMPTS = 3;
 const MAX_EVIDENCE_IDS = 25;
@@ -141,7 +141,7 @@ function corruptError(cause) {
 
 export class AiMemoryStore {
   constructor(options = {}) {
-    const configured = options.directory || process.env.DEEPSEEK_ADVANCED_MEMORY_DIR || DEFAULT_MEMORY_DIR;
+    const configured = options.directory || process.env.LLM_MEMORY_DIR || DEFAULT_MEMORY_DIR;
     this.directory = isAbsolute(configured) ? configured : resolve(configured);
     this.memoryPath = join(this.directory, 'memory.json');
     this.previousPath = join(this.directory, 'memory.previous.json');
@@ -394,7 +394,7 @@ export class AiMemoryStore {
 
   async loadJob(gameId) { await this._ensureDirectories(); return this._readRecord(this.jobsPath, gameId); }
 
-  async listJobs({ statuses } = {}) {
+  async _listJobsUnlocked({ statuses } = {}) {
     await this._ensureDirectories();
     const allowed = statuses ? new Set(statuses) : null;
     const entries = await readdir(this.jobsPath, { withFileTypes: true });
@@ -405,7 +405,11 @@ export class AiMemoryStore {
       const job = await this._readRecord(this.jobsPath, gameId);
       if (job && (!allowed || allowed.has(job.status))) jobs.push(job);
     }
-    return jobs;
+    return jobs.sort((a, b) => a.gameId.localeCompare(b.gameId));
+  }
+
+  async listJobs({ statuses } = {}) {
+    return this._listJobsUnlocked({ statuses });
   }
 
   listJobsSync({ statuses } = {}) {
@@ -422,6 +426,53 @@ export class AiMemoryStore {
       }
     }
     return jobs;
+  }
+
+  async requeueFailedJob(gameId) {
+    return this.requeueFailedJobs({ gameId });
+  }
+
+  async requeueFailedJobs({ gameId, allFailed = false, dryRun = false } = {}) {
+    if (gameId !== undefined && allFailed) {
+      const error = new Error('Specify either gameId or allFailed');
+      error.code = 'REQUEUE_OPTIONS_INVALID';
+      throw error;
+    }
+    if (gameId === undefined && !allFailed) {
+      const error = new Error('A gameId or allFailed is required');
+      error.code = 'REQUEUE_OPTIONS_INVALID';
+      throw error;
+    }
+    return this.enqueue(() => this._withLock(async () => {
+      const memory = (await this._readUnlocked()).memory;
+      const jobs = gameId === undefined
+        ? await this._listJobsUnlocked({ statuses: ['failed'] })
+        : [await this._readRecord(this.jobsPath, gameId)].filter(Boolean);
+      const requeued = [];
+      const eligible = [];
+      const skipped = [];
+      for (const job of jobs) {
+        if (job.status !== 'failed') {
+          skipped.push({ gameId: job.gameId, reason: 'not_failed' });
+          continue;
+        }
+        if (memory.processedGameIds.includes(job.gameId)) {
+          skipped.push({ gameId: job.gameId, reason: 'processed' });
+          continue;
+        }
+        eligible.push(job.gameId);
+        if (!dryRun) {
+          await this._saveRecord(this.jobsPath, job.gameId, {
+            ...job,
+            status: 'pending',
+            attempts: 0,
+            lastError: null,
+          });
+          requeued.push(job.gameId);
+        }
+      }
+      return { dryRun, eligible, requeued, skipped };
+    }));
   }
 
   async saveEpisode(gameId, value) {
