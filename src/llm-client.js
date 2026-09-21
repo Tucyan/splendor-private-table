@@ -160,9 +160,9 @@ export async function requestLlmJson({
     messages,
     response_format: { type: 'json_object' },
     stream: false,
-    max_tokens: maxTokens,
     temperature,
   };
+  if (maxTokens !== null && maxTokens !== undefined) body.max_tokens = maxTokens;
   // Keep this explicit so a future extraBody change cannot override the protocol fields.
   for (const field of PROTECTED_BODY_FIELDS) {
     if (field === 'model') body.model = model;

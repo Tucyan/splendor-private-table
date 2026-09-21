@@ -111,6 +111,21 @@ test('allows JSON wording in any message content and defaults optional request v
   assert.deepEqual(result, { data: {}, usage: null, finishReason: null });
 });
 
+test('omits max_tokens when the caller explicitly disables the client token limit', async () => {
+  let body;
+  await requestLlmJson({
+    config: { ...config, extraBody: {} },
+    model: 'm',
+    messages: [{ role: 'user', content: 'Return JSON.' }],
+    maxTokens: null,
+    fetchImpl: async (_url, options) => {
+      body = JSON.parse(options.body);
+      return response({ choices: [{ message: { content: '{}' } }] });
+    },
+  });
+  assert.equal(Object.hasOwn(body, 'max_tokens'), false);
+});
+
 test('rejects empty and non-string completion content with a stable code', async () => {
   for (const content of ['', '   ', null, { answer: 'not a string' }]) {
     await assert.rejects(

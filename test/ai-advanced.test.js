@@ -18,7 +18,7 @@ test('advanced chooser uses the injected advanced model and returns only an orig
   }});
   assert.equal(request.config,llmConfig);
   assert.equal(request.model,'advanced-model');
-  assert.equal(request.maxTokens,1024);
+  assert.equal(request.maxTokens, null);
   assert.ok(request.messages[1].content.length < 30000);
   assert.equal(result.action,actions[0]);
   assert.equal(result.source,'llm-advanced');
@@ -37,6 +37,39 @@ test('advanced chooser prefers its tactical action on invalid model output', asy
   assert.equal(result.source,'llm-advanced-fallback');
   assert.equal(result.reasonCode,'LLM_INVALID_ACTION');
   assert.match(result.notice,/战术兜底/);
+});
+
+test('advanced chooser retries illegal action indexes with the error context up to three attempts', async () => {
+  const game=createGame([{id:'a'},{id:'b'}]);
+  const actions=legalActions(game,'a');
+  const requests=[];
+  let calls=0;
+  const result=await chooseAdvancedAction(game,'a',actions,{llmConfig,requestJson:async options=>{
+    requests.push(options.messages);
+    calls += 1;
+    return calls < 3
+      ? {data:{actionIndex:999,plan:'invalid'},usage:null,finishReason:'stop'}
+      : {data:{actionIndex:0,plan:'recovered'},usage:null,finishReason:'stop'};
+  }});
+  assert.equal(calls,3);
+  assert.equal(result.source,'llm-advanced');
+  assert.equal(result.action,actions[0]);
+  assert.match(requests[1].at(-1).content,/actionIndex/);
+  assert.match(requests[1].at(-1).content,/999/);
+  assert.match(requests[2].at(-1).content,/"attempt":2/);
+});
+
+test('advanced chooser falls back after three illegal model responses', async () => {
+  const game=createGame([{id:'a'},{id:'b'}]);
+  const actions=legalActions(game,'a');
+  let calls=0;
+  const result=await chooseAdvancedAction(game,'a',actions,{llmConfig,requestJson:async()=>{
+    calls += 1;
+    return {data:{actionIndex:999},usage:null,finishReason:'stop'};
+  }});
+  assert.equal(calls,3);
+  assert.equal(result.source,'llm-advanced-fallback');
+  assert.equal(result.reasonCode,'LLM_INVALID_ACTION');
 });
 
 test('advanced fallback rejects a tactical action that is not one of the legal candidates', async () => {

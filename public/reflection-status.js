@@ -13,6 +13,9 @@ export function reflectionStatusView(room) {
   if (!room?.players?.some(player => player.ai && player.mode === ADVANCED_MODE)) return null;
 
   const source = statusSource(room);
+  // A non-normal termination intentionally has no reflection job. Do not turn
+  // the missing lifecycle snapshot into a misleading "syncing" indicator.
+  if (!source) return null;
   const rawState = String(valueOf(source) || 'syncing').toLowerCase();
   const state = rawState === 'saved' || rawState === 'completed' || rawState === 'success'
     ? 'saved'

@@ -8,26 +8,42 @@ export async function chooseAdvancedAction(game, playerId, actions, { llmConfig,
   if (!llmConfig?.enabled) return { action: tacticalAction(analysis?.action) || localAction(game, playerId, actions), source: 'local' };
   const facts = analysis || analyzeAdvancedActions(game, playerId, actions, { observation: context?.observation });
   const advancedContext = context || buildAdvancedContext(game, playerId, { tacticalAnalysis: facts, observationMemory, planMemory, gameId, experiences });
-  try {
-    const result = await requestJson({
-      config:llmConfig,
-      model:llmConfig.advancedModel,
-      messages:[
-        { role:'system',content:'只返回 JSON：{"actionIndex": number, "plan": string}。actionIndex 必须对应候选动作。' },
-        { role:'user',content:JSON.stringify({ context:advancedContext,actions:actions.map((action,index)=>({index,action})) }) },
-      ],
-      maxTokens:1024,
-      temperature:0.3,
-      signal,
-    });
-    const index=result?.data?.actionIndex;
-    if(!Number.isInteger(index)||index<0||index>=actions.length){
-      const error=new Error('LLM returned an invalid action index');
-      error.code='LLM_INVALID_ACTION';
-      throw error;
+  const baseMessages=[
+    { role:'system',content:'只返回 JSON：{"actionIndex": number, "plan": string}。actionIndex 必须对应候选动作。' },
+    { role:'user',content:JSON.stringify({ context:advancedContext,actions:actions.map((action,index)=>({index,action})) }) },
+  ];
+  let retryMessages=[];
+  let lastError;
+  for(let attempt=1;attempt<=3;attempt++){
+    try {
+      const result = await requestJson({
+        config:llmConfig,
+        model:llmConfig.advancedModel,
+        messages:[...baseMessages,...retryMessages],
+        maxTokens:null,
+        temperature:0.3,
+        signal,
+      });
+      const index=result?.data?.actionIndex;
+      if(!Number.isInteger(index)||index<0||index>=actions.length){
+        const error=new Error(`LLM returned an invalid action index: ${String(index)}`);
+        error.code='LLM_INVALID_ACTION';
+        error.responseData=result?.data;
+        throw error;
+      }
+      return { action:actions[index],source:'llm-advanced',plan:typeof result.data.plan==='string'?result.data.plan.slice(0,500):'' };
+    } catch (error) {
+      lastError=error;
+      if(error?.code!=='LLM_INVALID_ACTION'||attempt===3) break;
+      retryMessages=[
+        ...retryMessages,
+        { role:'assistant',content:JSON.stringify(error.responseData ?? { actionIndex: null }) },
+        { role:'user',content:JSON.stringify({ error:'上一轮输出了非法操作', actionIndex:error.responseData?.actionIndex ?? null, invalidActionIndex:error.responseData?.actionIndex ?? null, attempt, reason:error.message, allowedActionIndexes:actions.map((_,index)=>index) }) },
+      ];
     }
-    return { action:actions[index],source:'llm-advanced',plan:typeof result.data.plan==='string'?result.data.plan.slice(0,500):'' };
-  } catch (error) {
+  }
+  {
+    const error=lastError;
     return {
       action:tacticalAction(facts?.action)||localAction(game,playerId,actions),
       source:'llm-advanced-fallback',

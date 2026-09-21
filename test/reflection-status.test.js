@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { reflectionStatusView } from '../public/reflection-status.js';
 
 const advancedRoom = (status, extra = {}) => ({
-  game: { status: 'finished' },
+  game: { status: 'finished', ...(extra.game || {}) },
   players: [{ id: 'human', ai: false, mode: 'human' }, { id: 'bot', ai: true, mode: 'llm-advanced' }],
   reflectionStatus: status === undefined ? undefined : { state: status, ...extra },
 });
@@ -12,6 +12,11 @@ test('advanced finished games expose the syncing status', () => {
   assert.deepEqual(reflectionStatusView(advancedRoom('syncing')), {
     state: 'syncing', kind: 'pending', label: '经验同步中', detail: '正在整理这局公开信息，稍后保存为长期经验。',
   });
+});
+
+test('aborted advanced games do not expose a phantom syncing status', () => {
+  assert.equal(reflectionStatusView(advancedRoom(undefined, { game: { endReason: 'host' } })), null);
+  assert.equal(reflectionStatusView(advancedRoom(undefined, { game: { endReason: 'stalemate' } })), null);
 });
 
 test('saved and failed reflection statuses are explicit', () => {
