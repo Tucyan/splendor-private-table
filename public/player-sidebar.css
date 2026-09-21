@@ -8,6 +8,13 @@
 .player-name{min-width:0;flex:1}
 .player-name strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
 .player-name>span{font-size:9px}
+.player-resource-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:15px 13px;align-items:center;gap:2px 0;margin-top:8px;padding-top:5px;border-top:1px solid #3d514c55}
+.player-gem-number{text-align:center;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000;line-height:15px}
+.player-card-count,.player-reserved-count{align-self:center;justify-self:center;width:14px;height:12px;border-radius:2px;text-align:center;font-size:8px;line-height:12px;font-weight:600;font-variant-numeric:tabular-nums;text-shadow:none}
+.player-gem-number.white{color:#eef0e7}.player-gem-number.blue{color:#69a4df}.player-gem-number.green{color:#77b38f}.player-gem-number.red{color:#df7580}.player-gem-number.black{color:#9ca4bb}.player-gem-number.gold{color:#d9b75e}
+.player-card-count.white{background:#e7e9e2;color:#293332}.player-card-count.blue{background:#4d82b9;color:#f4f8ff}.player-card-count.green{background:#4d936d;color:#f3fff7}.player-card-count.red{background:#b95d69;color:#fff7f8}.player-card-count.black{background:#4a5061;color:#f4f5fb}
+.player-reserved-count{border:1px dashed #9aab9f;color:#b9c6bd;line-height:10px}
+.player-gem-number.is-zero{opacity:.3}
 .player-kick{padding:2px;flex-shrink:0}
 .latest-action{font-size:10px;line-height:1.8;color:var(--muted);margin-top:10px;overflow-wrap:anywhere}
 .personal-sidebar{padding:14px;background:linear-gradient(145deg,#293b35,#1a2a30);border:1px solid #7b89645c;border-radius:10px}

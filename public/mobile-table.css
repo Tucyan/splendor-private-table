@@ -26,19 +26,23 @@
   .game-page .turn-banner>span:first-child{font-size:15px}
   .game-page .turn-banner>span:nth-of-type(2){display:none}
   .game-page .turn-banner .final-tag{font-size:9px;margin-left:auto;white-space:nowrap;padding:2px 4px}
-  .game-page .game-layout{flex:1;min-height:0;display:grid;align-items:stretch;grid-template-columns:minmax(0,1fr);grid-template-rows:50px minmax(0,1fr) auto;gap:6px}
+  .game-page .game-layout{flex:1;min-height:0;display:grid;align-items:stretch;grid-template-columns:minmax(0,1fr);grid-template-rows:72px minmax(0,1fr) auto;gap:6px}
   .game-page .players-column{grid-column:1;grid-row:1;display:grid;grid-template-columns:repeat(var(--player-count),minmax(0,1fr));gap:4px;min-height:0}
   .players-column>.section-label,.players-column .latest-action,.players-column .log-button{display:none}
-  .players-column .player-panel{margin:0;padding:4px;border-radius:5px;min-width:0}
-  .players-column .player-head{display:grid;grid-template-columns:18px minmax(0,1fr) auto;grid-template-rows:20px 14px;gap:2px 3px;margin:0}
+  .players-column .player-panel{margin:0;padding:4px;border-radius:5px;min-width:0;overflow:hidden}
+  .players-column .player-head{display:grid;grid-template-columns:18px minmax(0,1fr) auto;grid-template-rows:20px;gap:2px 3px;margin:0}
   .players-column .player-name{display:contents}
   .players-column .player-head .avatar{grid-column:1;grid-row:1;width:18px;height:18px;font-size:10px}
   .players-column .player-head .avatar .icon{width:14px;height:14px}
-  .players-column .player-name strong{grid-column:2/-1;grid-row:1;font-size:10px;align-self:center}
+  .players-column .player-name strong{grid-column:2;grid-row:1;font-size:10px;align-self:center}
   .players-column .player-name strong small{font-size:8px}
-  .players-column .player-name>span{grid-row:2;grid-column:1/3;font-size:8px;margin:0;gap:3px;white-space:nowrap}
-  .players-column .player-score{grid-row:2;grid-column:3;font:16px/14px var(--serif);min-width:20px;white-space:nowrap}
-  .players-column .player-score small{font-size:8px}
+  .players-column .player-name>span{display:none}
+  .players-column .player-score{grid-row:1;grid-column:3;font:16px/18px var(--serif);min-width:18px;white-space:nowrap}
+  .players-column .player-score small{display:none}
+  .players-column .player-resource-grid{height:38px;grid-template-rows:17px 13px;gap:2px 0;margin-top:3px;padding:2px 0 0;border-top:1px solid #3d514c55}
+  .players-column .player-gem-number{font-size:12px;line-height:17px}
+  .players-column .player-card-count,.players-column .player-reserved-count{width:11px;height:11px;font-size:8px;line-height:11px}
+  .players-column .player-reserved-count{line-height:9px}
   .players-column .player-kick{display:none}
   .game-page .market-column{grid-column:1;grid-row:2;min-height:0;display:flex;flex-direction:column;gap:4px}
   .market-column>.section-label{display:none}
@@ -148,7 +152,7 @@
   .mobile-table-tools,.mobile-table-tools .icon-btn{height:32px}
   .game-page .game-layout{grid-template-columns:100px minmax(0,1fr) 206px;grid-template-rows:minmax(0,1fr);gap:7px}
   .game-page .players-column{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:5px}
-  .players-column .player-panel{flex:0 0 48px}
+  .players-column .player-panel{flex:0 0 66px}
   .game-page .market-column{grid-column:2;grid-row:1;gap:4px}
   .game-page .personal-sidebar{grid-column:3;grid-row:1;display:flex;flex-direction:column;padding:0 5px;border-top:0;border-left:1px solid #597160;background:none}
   .market-column .noble{height:34px;padding:2px}
