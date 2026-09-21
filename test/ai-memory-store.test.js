@@ -167,6 +167,19 @@ test('applyReflection re-validates operation targets against the latest locked s
   assert.equal(memory.revision, 1);
 });
 
+test('applyReflection re-validates operation evidence inside the lock', async t => {
+  const { store } = await temporaryStore(t);
+  await assert.rejects(
+    store.applyReflection('locked-game', [{
+      type: 'add',
+      lesson: { recommendation: 'must be rejected' },
+      evidenceGameId: 'different-game',
+    }]),
+    error => error.code === 'LLM_OPERATIONS_INVALID' && /evidenceGameId/i.test(error.message),
+  );
+  assert.deepEqual((await store.readMemory()).processedGameIds, []);
+});
+
 test('concurrent reflections touching different lessons do not lose updates', async t => {
   const { store } = await temporaryStore(t);
   await store.commitExperience('seed', [lesson('a'), lesson('b')]);

@@ -5,7 +5,7 @@ import { mkdir, open, readFile, readdir, rename, rm, writeFile } from 'node:fs/p
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { applyExperienceOperations } from './llm-experience-operations.js';
+import { applyExperienceOperations, validateExperienceOperations } from './llm-experience-operations.js';
 
 export const DEFAULT_MEMORY_DIR = resolve(process.cwd(), 'data/ai-memory/deepseek-advanced');
 const SCHEMA_VERSION = 2;
@@ -343,7 +343,11 @@ export class AiMemoryStore {
       const memory = current.memory;
       if (memory.processedGameIds.includes(String(gameId))) return { committed: false, applied: 0, memory };
       if (this.beforeCommit) await this.beforeCommit(String(gameId));
-      const next = applyExperienceOperations(memory, operations, { gameId: String(gameId), now: now() });
+      const normalized = validateExperienceOperations(
+        { operations },
+        { gameId: String(gameId), existingLessons: memory.lessons },
+      );
+      const next = applyExperienceOperations(memory, normalized, { gameId: String(gameId), now: now() });
       validateMemorySnapshot(next);
       await this._backupCurrent();
       await this._writeJsonAtomic(this.memoryPath, next);
