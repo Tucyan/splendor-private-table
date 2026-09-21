@@ -42,7 +42,7 @@ export class RoomStore {
   requireHost(s){const room=this.requireRoom(s);if(room.hostId!==s.id)fail('只有房主可以操作');return room;}
   snapshot(s){
     const r=this.room(s);
-    return {me:{id:s.id,name:s.name},llmAvailable:this.llmConfig.enabled===true,llmModels:publicLlmConfig(this.llmConfig),room:r?{
+    return {me:{id:s.id,name:s.name},llmAvailable:this.llmConfig.enabled===true,llmModels:this.llmConfig.enabled===true?publicLlmConfig(this.llmConfig):undefined,room:r?{
       code:r.code,hostId:r.hostId,version:r.version,createdAt:r.createdAt,
       players:r.players.map(p=>({id:p.id,name:p.name,ai:p.ai,mode:p.mode,online:p.ai||!!this.sessions.get(p.token)?.streams.size})),
       settings:r.settings,

@@ -1,4 +1,4 @@
-import { requestLlmJson } from './llm-client.js';
+import { requestLlmJson, llmReasonCode } from './llm-client.js';
 
 const COLORS = ['white','blue','green','red','black'];
 
@@ -50,12 +50,6 @@ export function localAction(game, playerId, actions) {
   return [...actions].sort((a,b)=>score(b)-score(a))[0];
 }
 
-const reasonCodeOf = error => (
-  typeof error?.code === 'string' && /^LLM_[A-Z0-9_]+$/.test(error.code)
-    ? error.code
-    : 'LLM_UNKNOWN_ERROR'
-);
-
 export async function chooseAIAction(game, playerId, actions, {
   llmConfig,
   requestJson=requestLlmJson,
@@ -84,7 +78,7 @@ export async function chooseAIAction(game, playerId, actions, {
     return {
       action:fallback(),
       source:'llm-basic-fallback',
-      reasonCode:reasonCodeOf(error),
+      reasonCode:llmReasonCode(error),
       notice:'LLM 本回合未返回有效决策，已由本地策略完成。',
     };
   }

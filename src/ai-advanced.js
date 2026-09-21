@@ -1,13 +1,7 @@
 import { buildAdvancedContext } from './ai-advanced-context.js';
 import { analyzeAdvancedActions } from './ai-advanced-evaluation.js';
 import { localAction } from './ai.js';
-import { requestLlmJson } from './llm-client.js';
-
-const reasonCodeOf = error => (
-  typeof error?.code === 'string' && /^LLM_[A-Z0-9_]+$/.test(error.code)
-    ? error.code
-    : 'LLM_UNKNOWN_ERROR'
-);
+import { requestLlmJson, llmReasonCode } from './llm-client.js';
 
 export async function chooseAdvancedAction(game, playerId, actions, { llmConfig, signal, requestJson = requestLlmJson, context, analysis, observationMemory, planMemory, gameId = 'current', experiences = [] } = {}) {
   const tacticalAction=action=>actions.includes(action)?action:null;
@@ -37,7 +31,7 @@ export async function chooseAdvancedAction(game, playerId, actions, { llmConfig,
     return {
       action:tacticalAction(facts?.action)||localAction(game,playerId,actions),
       source:'llm-advanced-fallback',
-      reasonCode:reasonCodeOf(error),
+      reasonCode:llmReasonCode(error),
       notice:'LLM 高级本回合使用战术兜底。',
     };
   }

@@ -182,6 +182,14 @@ test('snapshot exposes only LLM availability and public model names', t => {
   assert.ok(!JSON.stringify(snapshot).includes(llmConfig.apiUrl));
 });
 
+test('disabled LLM config hides model names and reports unavailable', t => {
+  const { store, host } = setup(t, { llmConfig: disabledLlmConfig });
+  const snapshot = store.snapshot(host);
+  assert.equal(snapshot.llmAvailable, false);
+  assert.equal(snapshot.llmModels, undefined);
+  assert.equal(Object.hasOwn(snapshot, 'aiAvailable'), false);
+});
+
 test('basic LLM and local-simple settle pending discards with localAction', async t => {
   for (const mode of ['llm-basic', 'local-simple']) {
     let adapterCalls = 0;

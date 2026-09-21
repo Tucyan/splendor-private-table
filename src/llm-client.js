@@ -137,6 +137,12 @@ function validateInput({ config, model, messages }) {
   }
 }
 
+export function llmReasonCode(error) {
+  return typeof error?.code === 'string' && /^LLM_[A-Z0-9_]+$/.test(error.code)
+    ? error.code
+    : 'LLM_UNKNOWN_ERROR';
+}
+
 export async function requestLlmJson({
   config,
   model,
@@ -186,11 +192,12 @@ export async function requestLlmJson({
   if (signal) signal.addEventListener('abort', onExternalAbort, { once: true });
   const timeoutMs = Number(config.timeoutMs);
   if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    // Not unref'd on purpose: the timer must keep the event loop alive, otherwise
+    // a stalled fetch with no other pending work would never hit the timeout.
     timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, timeoutMs);
-    timer.unref?.();
   }
 
   try {
