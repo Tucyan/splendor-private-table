@@ -239,3 +239,132 @@ test('removes the external abort listener after a completed request', async () =
   assert.equal(added, 1);
   assert.equal(removed, 1);
 });
+
+function abortableRead(signal, message = 'body read aborted') {
+  return new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new Error(message)), { once: true });
+  });
+}
+
+test('applies timeout while reading a successful response body', async () => {
+  await assert.rejects(
+    requestLlmJson({
+      config: { ...config, timeoutMs: 10 },
+      model: 'm',
+      messages,
+      fetchImpl: async (_url, options) => ({
+        ok: true,
+        status: 200,
+        json: () => abortableRead(options.signal),
+      }),
+    }),
+    (error) => error.code === 'LLM_TIMEOUT',
+  );
+});
+
+test('applies external cancellation while reading an HTTP error body', async () => {
+  const controller = new AbortController();
+  await assert.rejects(
+    requestLlmJson({
+      config: { ...config, timeoutMs: 1000 },
+      model: 'm',
+      messages,
+      signal: controller.signal,
+      fetchImpl: async (_url, options) => {
+        setTimeout(() => controller.abort(), 0);
+        return {
+          ok: false,
+          status: 500,
+          text: () => abortableRead(options.signal),
+        };
+      },
+    }),
+    (error) => error.code === 'LLM_ABORTED',
+  );
+});
+
+test('classifies response body read failures as network errors, not invalid JSON', async () => {
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages,
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => { throw new Error('response body read failed'); },
+      }),
+    }),
+    (error) => error.code === 'LLM_NETWORK_ERROR' && error.cause?.message === 'response body read failed',
+  );
+});
+
+test('redacts serialized messages with escaped quotes and newlines from HTTP errors', async () => {
+  const sensitiveMessages = [{ role: 'user', content: 'Return JSON with "quoted" data\nand test-secret-key.' }];
+  const serializedMessages = JSON.stringify(sensitiveMessages);
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages: sensitiveMessages,
+      fetchImpl: async () => response({ error: { message: `provider echoed ${serializedMessages}` } }, 400),
+    }),
+    (error) => error.code === 'LLM_HTTP_400'
+      && error.message.length < 500
+      && !error.message.includes(serializedMessages)
+      && !error.message.includes('quoted')
+      && !error.message.includes('test-secret-key'),
+  );
+});
+
+test('does not trust an arbitrary network error name', async () => {
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages,
+      fetchImpl: async () => {
+        const error = new Error('safe network detail');
+        error.name = 'test-secret-key';
+        throw error;
+      },
+    }),
+    (error) => error.code === 'LLM_NETWORK_ERROR'
+      && error.cause?.name !== 'test-secret-key'
+      && !JSON.stringify(error).includes('test-secret-key'),
+  );
+});
+
+test('rejects malformed request types with LLM_INVALID_REQUEST while preserving JSON prompt errors', async () => {
+  const invalidInputs = [
+    { model: 42, messages },
+    { config: { ...config, apiKey: 42 }, model: 'm', messages },
+    { config: { ...config, apiUrl: 42 }, model: 'm', messages },
+    { model: 'm', messages: [null] },
+    { model: 'm', messages: [{ role: 'user', content: 'JSON' }, { role: null, content: 'JSON' }] },
+    { model: 'm', messages: [{ role: 'user', content: 'JSON' }, { role: 'assistant', content: 42 }] },
+    { config, model: 'm', messages: [{ role: 'not-a-chat-role', content: 'JSON' }] },
+  ];
+  for (const input of invalidInputs) {
+    await assert.rejects(
+      requestLlmJson({ ...input, fetchImpl: async () => response({}) }),
+      (error) => error.code === 'LLM_INVALID_REQUEST',
+    );
+  }
+  await assert.rejects(
+    requestLlmJson({ config, model: 'm', messages: [{ role: 'user', content: 'plain text' }], fetchImpl: async () => response({}) }),
+    (error) => error.code === 'LLM_JSON_PROMPT_REQUIRED',
+  );
+});
+
+test('reports truncation before checking whether completion content is empty', async () => {
+  await assert.rejects(
+    requestLlmJson({
+      config,
+      model: 'm',
+      messages,
+      fetchImpl: async () => successfulResponse({ choices: [{ message: { content: '' }, finish_reason: 'length' }] }),
+    }),
+    (error) => error.code === 'LLM_TRUNCATED',
+  );
+});

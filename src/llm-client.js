@@ -1,4 +1,5 @@
 const PROTECTED_BODY_FIELDS = ['model', 'messages', 'response_format', 'stream'];
+const VALID_MESSAGE_ROLES = new Set(['system', 'developer', 'user', 'assistant', 'tool', 'function']);
 
 function createError(code, message, extras = {}) {
   const error = new Error(message);
@@ -13,6 +14,14 @@ function hasText(value) {
 
 function safeText(value, apiKey, messages = []) {
   let text = String(value ?? '');
+  const serializedMessages = messages.length > 0 ? JSON.stringify(messages) : null;
+  if (serializedMessages) text = text.split(serializedMessages).join('[REDACTED]');
+  for (const message of messages) {
+    if (message && typeof message.content === 'string' && message.content) {
+      const serializedMessage = JSON.stringify(message);
+      if (serializedMessage) text = text.split(serializedMessage).join('[REDACTED]');
+    }
+  }
   if (hasText(apiKey)) {
     text = text.split(String(apiKey)).join('[REDACTED]');
   }
@@ -27,10 +36,23 @@ function safeText(value, apiKey, messages = []) {
   return text;
 }
 
+const TRUSTED_CAUSE_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'URIError',
+  'EvalError',
+  'ReferenceError',
+  'AbortError',
+  'DOMException',
+  'NetworkError',
+]);
+
 function safeCause(cause, apiKey, messages) {
   const message = safeText(cause instanceof Error ? cause.message : cause, apiKey, messages);
   const result = new Error(message || 'Unknown network error');
-  if (cause instanceof Error && cause.name) result.name = cause.name;
+  if (cause instanceof Error && TRUSTED_CAUSE_NAMES.has(cause.name)) result.name = cause.name;
   return result;
 }
 
@@ -45,6 +67,13 @@ async function readBodyText(response) {
 
 function extractHttpMessage(rawText) {
   if (!rawText) return 'Provider returned an HTTP error';
+  if (typeof rawText !== 'string') {
+    try {
+      rawText = JSON.stringify(rawText);
+    } catch {
+      rawText = String(rawText);
+    }
+  }
   try {
     const body = JSON.parse(rawText);
     const message = body?.error?.message ?? body?.message ?? body?.error;
@@ -56,11 +85,36 @@ function extractHttpMessage(rawText) {
 }
 
 function validateInput({ config, model, messages }) {
-  const validConfig = config?.enabled === true && hasText(config.apiKey) && hasText(config.apiUrl);
-  const validMessages = Array.isArray(messages)
-    && messages.length > 0
-    && messages.some((message) => typeof message?.content === 'string' && /json/i.test(message.content));
-  if (!validConfig || !hasText(model) || !validMessages) {
+  if (!config || typeof config !== 'object') {
+    throw createError('LLM_INVALID_REQUEST', 'LLM request configuration is invalid');
+  }
+  if (config.enabled !== true || !hasText(config.apiKey) || !hasText(config.apiUrl)) {
+    throw createError('LLM_JSON_PROMPT_REQUIRED', 'An enabled LLM config, model, and JSON prompt are required');
+  }
+  if (typeof config.apiKey !== 'string' || typeof config.apiUrl !== 'string') {
+    throw createError('LLM_INVALID_REQUEST', 'LLM request configuration is invalid');
+  }
+  if (typeof model !== 'string') {
+    throw createError('LLM_INVALID_REQUEST', 'LLM model must be a non-empty string');
+  }
+  if (!hasText(model)) {
+    throw createError('LLM_JSON_PROMPT_REQUIRED', 'An enabled LLM config, model, and JSON prompt are required');
+  }
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw createError('LLM_JSON_PROMPT_REQUIRED', 'An enabled LLM config, model, and JSON prompt are required');
+  }
+  if (messages.some((message) => (
+    !message
+    || typeof message !== 'object'
+    || typeof message.role !== 'string'
+    || !hasText(message.role)
+    || !VALID_MESSAGE_ROLES.has(message.role)
+    || typeof message.content !== 'string'
+    || !hasText(message.content)
+  ))) {
+    throw createError('LLM_INVALID_REQUEST', 'LLM messages must contain valid role and content fields');
+  }
+  if (!messages.some((message) => /json/i.test(message.content))) {
     throw createError('LLM_JSON_PROMPT_REQUIRED', 'An enabled LLM config, model, and JSON prompt are required');
   }
 }
@@ -115,9 +169,8 @@ export async function requestLlmJson({
     if (field === 'stream') body.stream = false;
   }
 
-  let response;
   try {
-    response = await fetchImpl(config.apiUrl, {
+    const response = await fetchImpl(config.apiUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
@@ -126,55 +179,68 @@ export async function requestLlmJson({
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-  } catch (cause) {
     if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
     if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
+
+    const status = Number(response?.status);
+    const isOk = response?.ok === true || (status >= 200 && status < 300);
+    if (!isOk) {
+      const rawText = await readBodyText(response);
+      if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
+      if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
+      const prefix = `LLM provider HTTP ${status}: `;
+      const detail = safeText(String(extractHttpMessage(rawText) ?? ''), config.apiKey, messages)
+        .slice(0, Math.max(0, 500 - prefix.length));
+      throw createError(`LLM_HTTP_${status}`, `${prefix}${detail}`, { status });
+    }
+
+    let envelope;
+    try {
+      envelope = await response.json();
+    } catch (cause) {
+      if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
+      if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
+      throw createError('LLM_NETWORK_ERROR', 'LLM network request failed', {
+        cause: safeCause(cause, config.apiKey, messages),
+      });
+    }
+    if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
+    if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
+
+    const choice = envelope?.choices?.[0];
+    if (choice?.finish_reason === 'length') {
+      throw createError('LLM_TRUNCATED', 'LLM response was truncated');
+    }
+    const content = choice?.message?.content;
+    if (typeof content !== 'string' || content.trim() === '') {
+      throw createError('LLM_EMPTY_CONTENT', 'LLM response content was empty');
+    }
+    let data;
+    try {
+      data = JSON.parse(content);
+    } catch {
+      throw createError('LLM_INVALID_JSON', 'LLM response content was not valid JSON');
+    }
+    return {
+      data,
+      usage: envelope.usage ?? null,
+      finishReason: choice?.finish_reason ?? null,
+    };
+  } catch (error) {
+    if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
+    if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
+    if (error?.code === 'LLM_NETWORK_ERROR'
+      || (typeof error?.code === 'string' && /^LLM_HTTP_\d+$/.test(error.code))
+      || error?.code === 'LLM_TRUNCATED'
+      || error?.code === 'LLM_EMPTY_CONTENT'
+      || error?.code === 'LLM_INVALID_JSON') {
+      throw error;
+    }
     throw createError('LLM_NETWORK_ERROR', 'LLM network request failed', {
-      cause: safeCause(cause, config.apiKey, messages),
+      cause: safeCause(error, config.apiKey, messages),
     });
   } finally {
     if (timer) clearTimeout(timer);
     if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
-
-  const status = Number(response?.status);
-  const isOk = response?.ok === true || (status >= 200 && status < 300);
-  if (!isOk) {
-    let rawText = '';
-    try {
-      rawText = await readBodyText(response);
-    } catch {
-      rawText = '';
-    }
-    const prefix = `LLM provider HTTP ${status}: `;
-    const detail = safeText(String(extractHttpMessage(rawText) ?? ''), config.apiKey, messages)
-      .slice(0, Math.max(0, 500 - prefix.length));
-    throw createError(`LLM_HTTP_${status}`, `${prefix}${detail}`, { status });
-  }
-
-  let envelope;
-  try {
-    envelope = await response.json();
-  } catch {
-    throw createError('LLM_INVALID_JSON', 'LLM response was not valid JSON');
-  }
-  const choice = envelope?.choices?.[0];
-  const content = choice?.message?.content;
-  if (typeof content !== 'string' || content.trim() === '') {
-    throw createError('LLM_EMPTY_CONTENT', 'LLM response content was empty');
-  }
-  if (choice?.finish_reason === 'length') {
-    throw createError('LLM_TRUNCATED', 'LLM response was truncated');
-  }
-  let data;
-  try {
-    data = JSON.parse(content);
-  } catch {
-    throw createError('LLM_INVALID_JSON', 'LLM response content was not valid JSON');
-  }
-  return {
-    data,
-    usage: envelope.usage ?? null,
-    finishReason: choice?.finish_reason ?? null,
-  };
 }
