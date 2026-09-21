@@ -14,15 +14,15 @@ const $=s=>document.querySelector(s);
 const COLORS=['white','blue','green','red','black'];
 const ALL=[...COLORS,'gold'];
 const NAMES={white:'钻石',blue:'蓝宝石',green:'祖母绿',red:'红宝石',black:'缟玛瑙',gold:'黄金'};
-const AI_MODE_NAMES={'deepseek':'DeepSeek · 基础','deepseek-advanced':'DeepSeek · 高级','local-simple':'本地 · 简单','local-normal':'本地 · 普通','local-hard':'本地 · 困难','local-hell':'本地 · 地狱'};
+const AI_MODE_NAMES={'llm-basic':'LLM · 基础','llm-advanced':'LLM · 高级','local-simple':'本地 · 简单','local-normal':'本地 · 普通','local-hard':'本地 · 困难','local-hell':'本地 · 地狱'};
 const aiModeName=mode=>AI_MODE_NAMES[mode==='local'?'local-simple':mode]||'AI 商人';
 const AI_OPTIONS=[
   {mode:'local-simple',name:'本地 · 简单',detail:'本地运行 · 简单策略'},
   {mode:'local-normal',name:'本地 · 普通',detail:'本地局面评估 · 无需密钥'},
   {mode:'local-hard',name:'本地 · 困难',detail:'更多局面推演 · 无需密钥'},
   {mode:'local-hell',name:'本地 · 地狱',detail:'可预知真实牌序 · 无需密钥'},
-  {mode:'deepseek',name:'DeepSeek · 基础',detail:'依据当前局面决策 · 无历史记忆',requiresKey:true},
-  {mode:'deepseek-advanced',name:'DeepSeek · 高级',detail:'独立高级决策路径 · 依据当前局面',requiresKey:true},
+  {mode:'llm-basic',name:'LLM · 基础',detail:'依据当前局面决策 · 无历史记忆',requiresKey:true},
+  {mode:'llm-advanced',name:'LLM · 高级',detail:'独立高级决策路径 · 依据当前局面',requiresKey:true},
 ];
 const MOBILE_TABLE_QUERY='(max-width:1099px), (max-width:1199px) and (max-height:649px)';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -93,7 +93,7 @@ function lobby(){
   return `<main class="room-page">${roomTop(true)}${roomSettings()}<div class="lobby-heading"><h2>这一桌的朋友 <span>${r.players.length} / 4</span></h2><span class="muted">房主开始游戏后，按座位顺序轮流行动</span></div><section class="seats">${Array.from({length:4},(_,i)=>{
     const p=orderedPlayers(r)[i];
     return p?`<article class="seat ${p.id===state.me.id?'my-seat':''}"><span class="seat-number">0${i+1}</span>${host&&p.id!==state.me.id?`<button class="seat-kick icon-btn" data-kick="${p.id}" title="移出玩家">${icon('close')}</button>`:''}<div class="avatar large ${p.ai?'ai-avatar':''}">${p.ai?icon('bot'):esc(p.name.slice(0,1))}</div><h3>${esc(p.name)} ${p.id===state.me.id?'<small>你</small>':''}</h3><span class="status"><i class="${p.online?'':'off'}"></i>${p.ai?esc(aiModeName(p.mode)):(p.online?'在线，已入座':'离线，等待重连')}</span><span class="seat-role">${p.id===r.hostId?icon('crown')+' 房主':p.ai?'AI 对手':'宝石商人'}</span></article>`:`<article class="seat empty"><span class="seat-number">0${i+1}</span><div class="empty-symbol">＋</div><h3>虚位以待</h3><p>分享房间号，邀请一位朋友</p>${host?'<button class="btn subtle" data-do="add-ai">邀请 AI 入座</button>':'<span class="muted">等待房主邀请</span>'}</article>`;
-  }).join('')}</section><section class="lobby-bottom"><div class="table-note">${gem('gold',32)}<div><strong>从零开始，积累你的第一份声望。</strong><p>购买卡牌建立折扣，吸引贵族。达到 ${r.settings?.finishScore||15} 分时进入最后一轮。</p></div></div>${host?`<button class="btn primary start-btn" data-do="start" ${r.players.length<2?'disabled':''}>${r.players.length<2?'等待至少 2 位玩家':'开始这一局'} ${icon('arrow')}</button>`:'<span class="waiting-text">等待房主开始游戏<span class="dots">…</span></span>'}</section><div class="lobby-footnote">${state.aiAvailable?'DeepSeek 已就绪，可邀请 AI 加入对局。':'DeepSeek 尚未配置。你仍可邀请本地 AI，或与朋友直接开局。'}</div></main>`;
+  }).join('')}</section><section class="lobby-bottom"><div class="table-note">${gem('gold',32)}<div><strong>从零开始，积累你的第一份声望。</strong><p>购买卡牌建立折扣，吸引贵族。达到 ${r.settings?.finishScore||15} 分时进入最后一轮。</p></div></div>${host?`<button class="btn primary start-btn" data-do="start" ${r.players.length<2?'disabled':''}>${r.players.length<2?'等待至少 2 位玩家':'开始这一局'} ${icon('arrow')}</button>`:'<span class="waiting-text">等待房主开始游戏<span class="dots">…</span></span>'}</section><div class="lobby-footnote">${state.llmAvailable?'LLM 已就绪，可邀请 AI 加入对局。':'LLM 尚未配置。你仍可邀请本地 AI，或与朋友直接开局。'}</div></main>`;
 }
 function orderedPlayers(room){return (room.settings?.turnOrder||room.players.map(p=>p.id)).map(id=>room.players.find(p=>p.id===id)).filter(Boolean);}
 function roomSettings(){
@@ -348,8 +348,8 @@ document.addEventListener('click',async e=>{
     case 'close':return closeDialog();
     case 'profile':return openDialog(`<div class="eyebrow">YOUR SEAT AT THE TABLE</div><h2>朋友怎么称呼你？</h2><form id="profile-form"><label for="profile-name">桌上昵称</label><input id="profile-name" maxlength="24" value="${esc(state.me.name)}" required autocomplete="nickname"><p class="muted">自动保存在此浏览器，下次入座无需重填。</p><button class="btn primary full" type="submit">保存昵称</button></form>`);
     case 'create':try{await saveHomeName();await mutate('/api/rooms');}catch(error){toast(error.message);}return;
-    case 'add-ai':return openDialog(`<div class="eyebrow">ONE MORE MIND</div><h2>邀请一位 AI 商人</h2><p>可以选择本地策略，也可以邀请 DeepSeek。下一步选择商人类型与难度。</p><button class="btn primary full" data-do="ai-difficulty">继续选择 AI 难度 / 类型 ${icon('arrow')}</button>`);
-    case 'ai-difficulty':return openDialog(`<div class="eyebrow">ONE MORE MIND</div><h2>选择 AI 难度 / 类型</h2><p>选择一位商人加入牌桌。</p><div class="ai-mode-list">${AI_OPTIONS.map(option=>{const disabled=option.requiresKey&&!state.aiAvailable;return `<button class="ai-option" data-ai="${esc(option.mode)}" ${disabled?'disabled':''}>${option.mode.startsWith('local')?gem('green',30):icon('bot')}<span><strong>${esc(option.name)}</strong><small>${esc(disabled?'服务端尚未配置 DeepSeek 密钥':option.detail)}</small></span>${icon('arrow')}</button>`;}).join('')}</div>`);
+    case 'add-ai':return openDialog(`<div class="eyebrow">ONE MORE MIND</div><h2>邀请一位 AI 商人</h2><p>可以选择本地策略，也可以邀请 LLM。下一步选择商人类型与难度。</p><button class="btn primary full" data-do="ai-difficulty">继续选择 AI 难度 / 类型 ${icon('arrow')}</button>`);
+    case 'ai-difficulty':return openDialog(`<div class="eyebrow">ONE MORE MIND</div><h2>选择 AI 难度 / 类型</h2><p>选择一位商人加入牌桌。</p><div class="ai-mode-list">${AI_OPTIONS.map(option=>{const disabled=option.requiresKey&&!state.llmAvailable;return `<button class="ai-option" data-ai="${esc(option.mode)}" ${disabled?'disabled':''}>${option.mode.startsWith('local')?gem('green',30):icon('bot')}<span><strong>${esc(option.name)}</strong><small>${esc(disabled?'服务端尚未配置 LLM 密钥':option.detail)}</small></span>${icon('arrow')}</button>`;}).join('')}</div>`);
     case 'start':return mutate('/api/room/start');
     case 'reset':return mutate('/api/room/reset');
     case 'finish':return confirmDialog('结束当前对局？','将立即停止本局及 AI 思考，按当前声望和发展卡数量结算。房间与玩家席位会保留，可返回大厅再开一局。','finish','结束并结算');

@@ -4,7 +4,7 @@ import { reflectionStatusView } from '../public/reflection-status.js';
 
 const advancedRoom = (status, extra = {}) => ({
   game: { status: 'finished' },
-  players: [{ id: 'human', ai: false, mode: 'human' }, { id: 'bot', ai: true, mode: 'deepseek-advanced' }],
+  players: [{ id: 'human', ai: false, mode: 'human' }, { id: 'bot', ai: true, mode: 'llm-advanced' }],
   reflectionStatus: status === undefined ? undefined : { state: status, ...extra },
 });
 
@@ -29,7 +29,7 @@ test('continue status explains that the prior experience remains active', () => 
 });
 
 test('basic and local games never expose reflection status', () => {
-  const basic = { ...advancedRoom('syncing'), players: [{ id: 'human', ai: false }, { id: 'bot', ai: true, mode: 'deepseek' }] };
+  const basic = { ...advancedRoom('syncing'), players: [{ id: 'human', ai: false }, { id: 'bot', ai: true, mode: 'llm-basic' }] };
   const local = { ...advancedRoom('saved'), players: [{ id: 'human', ai: false }, { id: 'bot', ai: true, mode: 'local-hell' }] };
   const playing = { ...advancedRoom('syncing'), game: { status: 'playing' } };
   assert.equal(reflectionStatusView(basic), null);

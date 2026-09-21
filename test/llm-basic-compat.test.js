@@ -234,7 +234,7 @@ test('local normal, hard and hell use their own evaluation for pending noble cho
   }
 });
 
-test('the invitation dialog offers all six modes and gates only DeepSeek choices', async () => {
+test('the invitation dialog offers all six modes and gates only LLM choices', async () => {
   const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const firstStepStart = app.indexOf("case 'add-ai':");
   const secondStepStart = app.indexOf("case 'ai-difficulty':", firstStepStart);
@@ -250,20 +250,20 @@ test('the invitation dialog offers all six modes and gates only DeepSeek choices
   for (const [mode, label] of [
     ['local-simple', '本地 · 简单'], ['local-normal', '本地 · 普通'],
     ['local-hard', '本地 · 困难'], ['local-hell', '本地 · 地狱'],
-    ['deepseek', 'DeepSeek · 基础'], ['deepseek-advanced', 'DeepSeek · 高级'],
+    ['llm-basic', 'LLM · 基础'], ['llm-advanced', 'LLM · 高级'],
   ]) {
     assert.ok(app.includes(`mode:'${mode}',name:'${label}'`), `missing ${label} option`);
   }
   assert.match(app, /local-hell[\s\S]{0,260}真实牌序|真实牌序[\s\S]{0,260}local-hell/);
   assert.equal((app.match(/requiresKey:true/g) || []).length, 2);
-  assert.match(app, /option\.requiresKey&&!state\.aiAvailable/);
+  assert.match(app, /option\.requiresKey&&!state\.llmAvailable/);
 });
 
-test('AI strategy documents describe the four connected local modes and limit the advanced DeepSeek claim', async () => {
+test('AI strategy documents describe the four connected local modes and limit the advanced LLM claim', async () => {
   const difficulties = await readFile(new URL('../docs/local-ai-difficulties.md', import.meta.url), 'utf8');
   const strategy = await readFile(new URL('../docs/local-ai-strategy-optimization.md', import.meta.url), 'utf8');
   assert.match(difficulties, /简单.*普通.*困难.*地狱[\s\S]*已接入|已接入[\s\S]*简单.*普通.*困难.*地狱/);
-  assert.match(difficulties, /DeepSeek · 高级[\s\S]*(src\/ai-advanced\.js|高级失败)/);
+  assert.match(difficulties, /LLM · 高级[\s\S]*(src\/ai-advanced\.js|高级失败)/);
   assert.doesNotMatch(difficulties, /线上行为仍使用原有策略|以后接入房间时/);
   assert.match(strategy, /六档 AI[\s\S]*local-simple[\s\S]*local-normal[\s\S]*local-hard[\s\S]*local-hell/);
   assert.match(strategy, /高级[\s\S]*(src\/ai-advanced\.js|公开战术上下文)/);

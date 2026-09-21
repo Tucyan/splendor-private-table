@@ -1,4 +1,4 @@
-const ADVANCED_MODE = 'deepseek-advanced';
+const ADVANCED_MODE = 'llm-advanced';
 
 const statusSource = room => room?.reflectionStatus ?? room?.reflection ?? room?.aiReflection;
 const valueOf = value => typeof value === 'string' ? value : value?.state ?? value?.status;
