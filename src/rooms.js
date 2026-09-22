@@ -143,7 +143,7 @@ export class RoomStore {
   clearAdvancedMemory(r){if(r.gameId){this.advancedObservations.clear(r.gameId);this.advancedPlans.clear(r.gameId);}}
   async chooseForAI(r,p,actions,signal){
     const mode=p.mode==='local'?'local-simple':p.mode;
-    const options={llmConfig:mode.startsWith('llm-')?this.llmConfig:undefined,signal,logger:this.logger,gameId:r.gameId,observationMemory:this.advancedObservations,planMemory:this.advancedPlans};
+    const options={llmConfig:mode.startsWith('llm-')?this.llmConfig:undefined,signal,logger:this.logger,gameId:r.gameId,playerId:p.id,turn:r.game.turn,observationMemory:this.advancedObservations,planMemory:this.advancedPlans};
     if(r.game.pending&&(mode==='llm-basic'||mode==='local-simple'))return {action:localAction(r.game,p.id,actions),source:mode};
     if(mode==='llm-basic')return this.aiChoose(r.game,p.id,actions,options);
     if(mode==='llm-advanced'){

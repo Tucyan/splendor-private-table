@@ -285,8 +285,17 @@ export async function requestLlmJson({
       finishReason: choice?.finish_reason ?? null,
     };
   } catch (error) {
-    if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
-    if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
+    if (timedOut || externallyAborted) {
+      const normalized = timedOut
+        ? createError('LLM_TIMEOUT', 'LLM request timed out')
+        : createError('LLM_ABORTED', 'LLM request was cancelled');
+      await logger?.write({
+        type: 'llm.error', level: 'warn', requestId, gameId, playerId, turn, attempt, phase,
+        reasonCode: llmReasonCode(normalized), durationMs: Date.now() - startedAt,
+        data: { safeMessage: normalized.message },
+      });
+      throw normalized;
+    }
     const normalized = error && typeof error === 'object' && INTERNAL_ERRORS.has(error)
       ? error
       : createError('LLM_NETWORK_ERROR', 'LLM network request failed', {

@@ -54,6 +54,9 @@ export async function chooseAIAction(game, playerId, actions, {
   llmConfig,
   requestJson=requestLlmJson,
   signal,
+  logger,
+  gameId='current',
+  turn=game?.turn,
 }={}) {
   const fallback=()=>localAction(game,playerId,actions);
   if(!llmConfig?.enabled) return {action:fallback(),source:'local'};
@@ -62,9 +65,14 @@ export async function chooseAIAction(game, playerId, actions, {
       config:llmConfig,
       model:llmConfig.model,
       messages:buildMessages(game,playerId,actions),
-      maxTokens:128,
+      maxTokens:null,
       temperature:0.6,
       signal,
+      logger,
+      phase:'basic-decision',
+      gameId,
+      playerId,
+      turn,
     });
     const index=result?.data?.actionIndex;
     if(!Number.isInteger(index)||index<0||index>=actions.length){

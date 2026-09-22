@@ -39,11 +39,29 @@ test('basic LLM uses the injected base model and selects the original supplied a
     assert.equal(options.config,llmConfig);
     assert.equal(options.model,'base-model');
     assert.equal(options.messages.length,2);
+    assert.equal(options.maxTokens,null);
     return {data:{actionIndex:0},usage:null,finishReason:'stop'};
   }});
   assert.equal(result.action,actions[0]);
   assert.equal(result.source,'llm-basic');
   assert.equal(calls,1);
+});
+
+test('basic LLM passes correlation context to the shared request logger', async () => {
+  let received;
+  const logger = { write: async () => {} };
+  await chooseAIAction(game, 'a', actions, {
+    llmConfig,
+    logger,
+    gameId: 'game-basic-1',
+    turn: 2,
+    requestJson: async options => { received = options; return { data: { actionIndex: 0 }, usage: null, finishReason: 'stop' }; },
+  });
+  assert.equal(received.logger, logger);
+  assert.equal(received.gameId, 'game-basic-1');
+  assert.equal(received.playerId, 'a');
+  assert.equal(received.turn, 2);
+  assert.equal(received.phase, 'basic-decision');
 });
 
 test('invalid basic output falls back once with a stable reason code and safe notice', async () => {

@@ -235,6 +235,29 @@ test('converts timeout aborts to LLM_TIMEOUT and cleans up the timer', async () 
   assert.equal(abortSignal.aborted, true);
 });
 
+test('logs timeout errors with correlation metadata before rejecting', async () => {
+  const events = [];
+  await assert.rejects(
+    requestLlmJson({
+      config: { ...config, timeoutMs: 10 }, model: 'm', messages,
+      logger: { write: async event => events.push(event) },
+      requestId: 'timeout-request', gameId: 'timeout-game', playerId: 'p1', turn: 3, attempt: 2, phase: 'advanced-decision',
+      fetchImpl: (_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new Error('aborted by timeout')), { once: true });
+      }),
+    }),
+    error => error.code === 'LLM_TIMEOUT',
+  );
+  const event = events.find(item => item.type === 'llm.error');
+  assert.ok(event);
+  assert.equal(event.requestId, 'timeout-request');
+  assert.equal(event.gameId, 'timeout-game');
+  assert.equal(event.playerId, 'p1');
+  assert.equal(event.turn, 3);
+  assert.equal(event.attempt, 2);
+  assert.equal(event.reasonCode, 'LLM_TIMEOUT');
+});
+
 test('converts external cancellation to LLM_ABORTED', async () => {
   const controller = new AbortController();
   await assert.rejects(
