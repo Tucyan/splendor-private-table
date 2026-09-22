@@ -1,5 +1,7 @@
 const REQUIRED_KEYS = ['LLM_API_KEY', 'LLM_API_URL', 'LLM_MODEL'];
 const PROTECTED_EXTRA_FIELDS = ['model', 'messages', 'response_format', 'stream'];
+const DEFAULT_REASONING_EFFORTS = ['low', 'high', 'max'];
+const VALID_REASONING_EFFORTS = new Set(DEFAULT_REASONING_EFFORTS);
 
 function hasValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
@@ -14,13 +16,24 @@ function freezeDeep(value) {
 }
 
 function parseTimeout(rawValue) {
-  if (!hasValue(rawValue)) return 20000;
+  if (!hasValue(rawValue)) return 0;
   const text = String(rawValue).trim();
   const timeoutMs = Number(text);
-  if (!/^\d+$/.test(text) || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
-    throw new Error('LLM_TIMEOUT_MS must be a positive integer');
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(timeoutMs)) {
+    throw new Error('LLM_TIMEOUT_MS must be a non-negative integer');
   }
   return timeoutMs;
+}
+
+function parseReasoningEfforts(rawValue) {
+  if (!hasValue(rawValue)) return [...DEFAULT_REASONING_EFFORTS];
+  const efforts = String(rawValue).split(',').map(value => value.trim()).filter(Boolean);
+  if (efforts.some(effort => !VALID_REASONING_EFFORTS.has(effort))) {
+    throw new Error('LLM_REASONING_EFFORTS must be a comma-separated list of low, high, and/or max');
+  }
+  const uniqueEfforts = [...new Set(efforts)];
+  if (!uniqueEfforts.length) throw new Error('LLM_REASONING_EFFORTS must include low, high, or max');
+  return uniqueEfforts;
 }
 
 function parseExtraBody(rawValue) {
@@ -98,7 +111,8 @@ export function loadLlmConfig(env = process.env) {
       model: undefined,
       advancedModel: undefined,
       reflectionModel: undefined,
-      timeoutMs: 20000,
+      timeoutMs: parseTimeout(env.LLM_TIMEOUT_MS),
+      reasoningEfforts: parseReasoningEfforts(env.LLM_REASONING_EFFORTS),
       extraBody: freezeDeep({}),
       logEnabled: parseBoolean(env.LLM_LOG_ENABLED, true),
       logDirectory: hasValue(env.LLM_LOG_DIR) ? String(env.LLM_LOG_DIR).trim() : 'data/logs/llm',
@@ -125,6 +139,7 @@ export function loadLlmConfig(env = process.env) {
     advancedModel,
     reflectionModel,
     timeoutMs: parseTimeout(env.LLM_TIMEOUT_MS),
+    reasoningEfforts: parseReasoningEfforts(env.LLM_REASONING_EFFORTS),
     extraBody: freezeDeep(parseExtraBody(env.LLM_REQUEST_EXTRA_JSON)),
     logEnabled: parseBoolean(env.LLM_LOG_ENABLED, true),
     logDirectory: hasValue(env.LLM_LOG_DIR) ? String(env.LLM_LOG_DIR).trim() : 'data/logs/llm',
@@ -138,5 +153,6 @@ export function publicLlmConfig(config) {
     baseModel: config.model,
     advancedModel: config.advancedModel,
     reflectionModel: config.reflectionModel,
+    reasoningEfforts: ['off', ...(config.reasoningEfforts || DEFAULT_REASONING_EFFORTS)],
   });
 }

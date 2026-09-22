@@ -4,11 +4,18 @@ import { localAction } from './ai.js';
 import { requestLlmJson, llmReasonCode } from './llm-client.js';
 import { randomUUID } from 'node:crypto';
 
-export async function chooseAdvancedAction(game, playerId, actions, { llmConfig, signal, requestJson = requestLlmJson, logger, context, analysis, observationMemory, planMemory, gameId = 'current', experiences = [] } = {}) {
+export async function chooseAdvancedAction(game, playerId, actions, { llmConfig, signal, requestJson = requestLlmJson, logger, context, analysis, observationMemory, planMemory, gameId = 'current', experiences = [], reasoningEffort = 'off' } = {}) {
   const tacticalAction=action=>actions.includes(action)?action:null;
   if (!llmConfig?.enabled) return { action: tacticalAction(analysis?.action) || localAction(game, playerId, actions), source: 'local' };
   const facts = analysis || analyzeAdvancedActions(game, playerId, actions, { observation: context?.observation });
   const advancedContext = context || buildAdvancedContext(game, playerId, { tacticalAnalysis: facts, observationMemory, planMemory, gameId, experiences });
+  const reasoningBody = reasoningEffort === 'off'
+    ? { thinking: { type: 'disabled' } }
+    : { thinking: { type: 'enabled' }, reasoning_effort: reasoningEffort };
+  const requestConfig = {
+    ...llmConfig,
+    extraBody: { ...(llmConfig.extraBody || {}), ...reasoningBody },
+  };
   const baseMessages=[
     { role:'system',content:'只返回 JSON：{"actionIndex": number, "plan": string}。actionIndex 必须对应候选动作。' },
     { role:'user',content:JSON.stringify({ context:advancedContext,actions:actions.map((action,index)=>({index,action})) }) },
@@ -20,7 +27,7 @@ export async function chooseAdvancedAction(game, playerId, actions, { llmConfig,
     const requestId=randomUUID();requestIds.push(requestId);
     try {
       const result = await requestJson({
-        config:llmConfig,
+        config:requestConfig,
         model:llmConfig.advancedModel,
         messages:[...baseMessages,...retryMessages],
         maxTokens:null,

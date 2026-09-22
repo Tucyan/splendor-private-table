@@ -16,6 +16,13 @@ function setup(t,options={}){
   store.create(host);store.join(guest,store.room(host).code);
   return {store,host,guest,room:store.room(host)};
 }
+test('host can add advanced LLM AI with only a configured reasoning effort',t=>{
+  const configured={...llmConfig,reasoningEfforts:['low','max']};
+  const {store,host,room}=setup(t,{llmConfig:configured});
+  store.addAI(host,'llm-advanced','max');
+  assert.equal(room.players.at(-1).reasoningEffort,'max');
+  assert.throws(()=>store.addAI(host,'llm-advanced','high'),/推理强度/);
+});
 test('host settings start at the first reordered seat and complete an equal-turn final round',t=>{
   const {store,host,guest,room}=setup(t);
   assert.equal(room.settings.finishScore,15);

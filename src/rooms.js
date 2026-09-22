@@ -20,7 +20,7 @@ const nameOf=value=>{
 };
 
 export class RoomStore {
-  constructor({llmConfig=DISABLED_LLM_CONFIG,aiDelay=900,aiChoose=chooseAIAction,advancedChoose=chooseAdvancedAction,memoryStore,fetchImpl,reflectionBarrierMs=60000,reflectionTimeoutMs=20000,logger,debugAutoPlay}={}) {
+  constructor({llmConfig=DISABLED_LLM_CONFIG,aiDelay=900,aiChoose=chooseAIAction,advancedChoose=chooseAdvancedAction,memoryStore,fetchImpl,reflectionBarrierMs=60000,reflectionTimeoutMs=llmConfig.timeoutMs??0,logger,debugAutoPlay}={}) {
     this.sessions=new Map();this.rooms=new Map();this.llmConfig=llmConfig;this.aiDelay=aiDelay;this.aiChoose=aiChoose;this.advancedChoose=advancedChoose;
     this.logger=logger || new LlmLogger({directory:llmConfig.logDirectory,enabled:llmConfig.logEnabled,apiKey:llmConfig.apiKey});
     this.debugAutoPlay=debugAutoPlay ?? llmConfig.debugAutoPlay ?? null;
@@ -48,7 +48,7 @@ export class RoomStore {
     const r=this.room(s);
     return {me:{id:s.id,name:s.name},llmAvailable:this.llmConfig.enabled===true,llmModels:this.llmConfig.enabled===true?publicLlmConfig(this.llmConfig):undefined,room:r?{
       code:r.code,hostId:r.hostId,version:r.version,createdAt:r.createdAt,
-      players:r.players.map(p=>({id:p.id,name:p.name,ai:p.ai,auto:p.auto===true,mode:p.mode,online:p.ai||p.auto||!!this.sessions.get(p.token)?.streams.size})),
+      players:r.players.map(p=>({id:p.id,name:p.name,ai:p.ai,auto:p.auto===true,mode:p.mode,reasoningEffort:p.reasoningEffort,online:p.ai||p.auto||!!this.sessions.get(p.token)?.streams.size})),
       settings:r.settings,
       game:r.game?viewGame(r.game,s.id):null,
       legalActions:r.game&&r.autoPlay?.playerId===s.id?[]:r.game?legalActions(r.game,s.id):[],
@@ -82,13 +82,15 @@ export class RoomStore {
     if(r.game)fail('对局已经开始，暂时不能加入');if(r.players.length>=4)fail('房间已满（最多 4 人）');
     r.players.push(this.human(s));r.settings.turnOrder.push(s.id);s.roomCode=code;r.version++;this.publish(r);
   }
-  addAI(s,mode='llm-basic'){
+  addAI(s,mode='llm-basic',reasoningEffort='off'){
     const r=this.requireHost(s);if(r.game)fail('请在准备大厅邀请 AI');if(r.players.length>=4)fail('房间已满');
     if(mode==='local')mode='local-simple';
     if(!['llm-basic','llm-advanced','local-simple','local-normal','local-hard','local-hell'].includes(mode))fail('未知 AI 类型');
     if(mode.startsWith('llm-')&&!this.llmConfig.enabled)fail('服务端尚未启用 LLM 配置');
+    const reasoningEfforts=this.llmConfig.reasoningEfforts||['low','high','max'];
+    if(mode==='llm-advanced'&&!['off',...reasoningEfforts].includes(reasoningEffort))fail('LLM 推理强度无效');
     const names=['阿尔托','卢米','翡翠','奥罗'];const name=names.find(n=>!r.players.some(p=>p.name===n))||'宝石商人';
-    const id=randomBytes(12).toString('hex');r.players.push({id,name,ai:true,mode});r.settings.turnOrder.push(id);r.version++;this.publish(r);
+    const id=randomBytes(12).toString('hex');r.players.push({id,name,ai:true,mode,...(mode==='llm-advanced'?{reasoningEffort}:{})});r.settings.turnOrder.push(id);r.version++;this.publish(r);
   }
   start(s){
     const r=this.requireHost(s);if(r.startTask)return r.startTask;if(r.game)fail('对局已经开始');if(r.players.length<2)fail('至少需要 2 位玩家，可以邀请 AI');
@@ -147,6 +149,7 @@ export class RoomStore {
     if(r.game.pending&&(mode==='llm-basic'||mode==='local-simple'))return {action:localAction(r.game,p.id,actions),source:mode};
     if(mode==='llm-basic')return this.aiChoose(r.game,p.id,actions,options);
     if(mode==='llm-advanced'){
+      options.reasoningEffort=p.reasoningEffort||'off';
       try {
         const memory=await this.reflection.store.readMemory();
         options.experiences=(memory.lessons||[]).filter(lesson=>lesson.status!=='retired').slice(-8).map(lesson=>({id:lesson.id,text:lesson.recommendation||lesson.trigger||''}));

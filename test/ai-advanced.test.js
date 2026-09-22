@@ -16,13 +16,31 @@ test('advanced chooser uses the injected advanced model and returns only an orig
     request=options;
     return {data:{actionIndex:0,plan:'x'.repeat(700)},usage:null,finishReason:'stop'};
   }});
-  assert.equal(request.config,llmConfig);
+  assert.deepEqual(request.config.extraBody,{thinking:{type:'disabled'}});
   assert.equal(request.model,'advanced-model');
   assert.equal(request.maxTokens, null);
   assert.ok(request.messages[1].content.length < 30000);
   assert.equal(result.action,actions[0]);
   assert.equal(result.source,'llm-advanced');
   assert.equal(result.plan.length,500);
+});
+
+test('advanced chooser maps the selected reasoning effort to provider request fields', async () => {
+  const game=createGame([{id:'a'},{id:'b'}]);
+  const actions=legalActions(game,'a');
+  const requests=[];
+  for(const effort of ['off','low','high','max']){
+    await chooseAdvancedAction(game,'a',actions,{
+      llmConfig,reasoningEffort:effort,analysis:{action:actions[0]},
+      requestJson:async options=>{requests.push(options.config.extraBody);return {data:{actionIndex:0},usage:null,finishReason:'stop'};},
+    });
+  }
+  assert.deepEqual(requests,[
+    {thinking:{type:'disabled'}},
+    {thinking:{type:'enabled'},reasoning_effort:'low'},
+    {thinking:{type:'enabled'},reasoning_effort:'high'},
+    {thinking:{type:'enabled'},reasoning_effort:'max'},
+  ]);
 });
 
 test('advanced chooser prefers its tactical action on invalid model output', async () => {

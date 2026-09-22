@@ -65,7 +65,7 @@ export function createServer(options={}){
         switch(url.pathname){
           case '/api/rooms':store.create(s);break;
           case '/api/join':store.join(s,body.code);break;
-          case '/api/room/ai':store.addAI(s,body.mode);break;
+          case '/api/room/ai':store.addAI(s,body.mode,body.reasoningEffort);break;
           case '/api/room/start':store.start(s);break;
           case '/api/room/settings':store.settingsUpdate(s,body);break;
           case '/api/room/reset':store.reset(s);break;

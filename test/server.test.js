@@ -72,13 +72,17 @@ test('the AI endpoint forwards all four local modes and gates only generic LLM m
 test('createServer loads generic LLM config from its injected environment and publishes only model names', async t => {
   const {client,server}=await fixture(t,{
     llmConfig:undefined,
-    env:{LLM_API_KEY:'server-secret',LLM_API_URL:'https://provider.example/chat',LLM_MODEL:'base-x',LLM_ADVANCED_MODEL:'advanced-x'},
+    env:{LLM_API_KEY:'server-secret',LLM_API_URL:'https://provider.example/chat',LLM_MODEL:'base-x',LLM_ADVANCED_MODEL:'advanced-x',LLM_REASONING_EFFORTS:'low,max'},
   });
   assert.equal(server.store.llmConfig.model,'base-x');
   const host=client();
   const result=await host('/api/session',{name:'房主'});
   assert.equal(result.data.llmAvailable,true);
-  assert.deepEqual(result.data.llmModels,{enabled:true,baseModel:'base-x',advancedModel:'advanced-x',reflectionModel:'advanced-x'});
+  assert.deepEqual(result.data.llmModels,{enabled:true,baseModel:'base-x',advancedModel:'advanced-x',reflectionModel:'advanced-x',reasoningEfforts:['off','low','max']});
+  await host('/api/rooms',{});
+  const added=await host('/api/room/ai',{mode:'llm-advanced',reasoningEffort:'max'});
+  assert.equal(added.data.room.players.at(-1).reasoningEffort,'max');
+  assert.equal((await host('/api/room/ai',{mode:'llm-advanced',reasoningEffort:'high'})).status,400);
   assert.ok(!JSON.stringify(result.data).includes('server-secret'));
   assert.ok(!JSON.stringify(result.data).includes('provider.example'));
 });

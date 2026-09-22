@@ -15,6 +15,7 @@ const COLORS=['white','blue','green','red','black'];
 const ALL=[...COLORS,'gold'];
 const NAMES={white:'钻石',blue:'蓝宝石',green:'祖母绿',red:'红宝石',black:'缟玛瑙',gold:'黄金'};
 const AI_MODE_NAMES={'llm-basic':'LLM · 基础','llm-advanced':'LLM · 高级','local-simple':'本地 · 简单','local-normal':'本地 · 普通','local-hard':'本地 · 困难','local-hell':'本地 · 地狱'};
+const REASONING_EFFORT_NAMES={off:'关闭',low:'低',high:'高',max:'最高'};
 const aiModeName=mode=>AI_MODE_NAMES[mode==='local'?'local-simple':mode]||'AI 商人';
 const AI_OPTIONS=[
   {mode:'local-simple',name:'本地 · 简单',detail:'本地运行 · 简单策略'},
@@ -338,6 +339,11 @@ document.addEventListener('click',async e=>{
   if(d.confirm){closeDialog();if(d.confirm.startsWith('kick:'))return mutate('/api/room/kick',{playerId:d.confirm.slice(5)});if(d.confirm==='leave')return mutate('/api/room/leave');if(d.confirm==='finish')return mutate('/api/room/finish');}
   if(d.buy){const payment=Object.fromEntries([...document.querySelectorAll('[data-payment]')].map(input=>[input.dataset.payment,Number(input.value)]));const cardId=d.buy;closeDialog();return act({type:'buy',cardId,payment});}
   if('reserve'in d){const action=d.reserve?{type:'reserve',cardId:d.reserve}:{type:'reserve',level:Number(d.level)};closeDialog();return act(action);}
+  if(d.reasoningEffort){closeDialog();return mutate('/api/room/ai',{mode:'llm-advanced',reasoningEffort:d.reasoningEffort});}
+  if(d.ai==='llm-advanced'){
+    const efforts=state.llmModels?.reasoningEfforts||['off','low','high','max'];
+    return openDialog(`<div class="eyebrow">LLM · ADVANCED</div><h2>选择 LLM 推理强度</h2><p>强度列表由服务端环境配置提供。</p><div class="ai-mode-list">${efforts.map(effort=>`<button class="ai-option" data-reasoning-effort="${esc(effort)}"><span class="ai-option-mark">${icon(effort==='off'?'close':'bot')}</span><span><strong>${esc(REASONING_EFFORT_NAMES[effort]||effort)}</strong><small>${esc(effort==='off'?'关闭思考模式':`使用 ${effort} 推理强度`)}</small></span>${icon('arrow')}</button>`).join('')}</div><button class="btn secondary full" data-do="ai-difficulty">返回 AI 类型选择</button>`);
+  }
   if(d.ai){closeDialog();return mutate('/api/room/ai',{mode:d.ai});}
   switch(d.do){
     case 'toggle-sound':soundMuted=!soundMuted;storage.set('splendor.sound-muted',String(soundMuted));render();if(!soundMuted)soundPlayer.play('turn');toast(soundMuted?'音效已关闭':'音效已开启');return;

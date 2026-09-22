@@ -59,9 +59,9 @@ export function buildReflectionPrompt(snapshot, { existingLessons = [] } = {}) {
 }
 
 export class ReflectionCoordinator {
-  constructor({ store = new AiMemoryStore(), llmConfig = { enabled: false }, fetchImpl = fetch, requestJson = requestLlmJson, timeoutMs = 20000, maxAttempts = 3, logger } = {}) {
+  constructor({ store = new AiMemoryStore(), llmConfig = { enabled: false }, fetchImpl = fetch, requestJson = requestLlmJson, timeoutMs, maxAttempts = 3, logger } = {}) {
     this.store = store; this.llmConfig = llmConfig; this.fetchImpl = fetchImpl; this.requestJson = requestJson;
-    this.timeoutMs = timeoutMs; this.maxAttempts = maxAttempts; this.logger = logger;
+    this.timeoutMs = timeoutMs ?? llmConfig.timeoutMs ?? 0; this.maxAttempts = maxAttempts; this.logger = logger;
   }
 
   async enqueue(snapshot) {

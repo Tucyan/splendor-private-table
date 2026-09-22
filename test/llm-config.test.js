@@ -15,6 +15,7 @@ test('loads the complete provider-neutral LLM configuration', () => {
     LLM_ADVANCED_MODEL: 'advanced-model',
     LLM_REFLECTION_MODEL: 'reflection-model',
     LLM_TIMEOUT_MS: '30000',
+    LLM_REASONING_EFFORTS: 'max, low, max',
     LLM_REQUEST_EXTRA_JSON: '{"temperature":0.2}',
   });
 
@@ -26,6 +27,7 @@ test('loads the complete provider-neutral LLM configuration', () => {
     advancedModel: 'advanced-model',
     reflectionModel: 'reflection-model',
     timeoutMs: 30000,
+    reasoningEfforts: ['max', 'low'],
     extraBody: { temperature: 0.2 },
     logEnabled: true,
     logDirectory: 'data/logs/llm',
@@ -59,7 +61,8 @@ test('disables LLM when all required variables are missing', () => {
     model: undefined,
     advancedModel: undefined,
     reflectionModel: undefined,
-    timeoutMs: 20000,
+    timeoutMs: 0,
+    reasoningEfforts: ['low', 'high', 'max'],
     extraBody: {},
     logEnabled: true,
     logDirectory: 'data/logs/llm',
@@ -86,13 +89,14 @@ test('falls advanced and reflection models back to the base model', () => {
   assert.equal(advancedOnly.reflectionModel, 'advanced-model');
 });
 
-test('returns only safe public model configuration', () => {
+test('returns only safe public model configuration and adds the disabled effort', () => {
   const publicConfig = publicLlmConfig(loadLlmConfig(completeEnv));
   assert.deepEqual(publicConfig, {
     enabled: true,
     baseModel: 'base-model',
     advancedModel: 'base-model',
     reflectionModel: 'base-model',
+    reasoningEfforts: ['off', 'low', 'high', 'max'],
   });
   assert.equal(Object.hasOwn(publicConfig, 'apiKey'), false);
   assert.equal(Object.hasOwn(publicConfig, 'apiUrl'), false);
@@ -105,14 +109,27 @@ test('rejects non-http(s) URLs', () => {
   );
 });
 
-test('requires timeout to be a positive integer and defaults it to 20000', () => {
-  assert.equal(loadLlmConfig(completeEnv).timeoutMs, 20000);
-  for (const value of ['0', '-1', '1.5', 'not-a-number']) {
+test('disables the request timeout by default and accepts zero or positive integers', () => {
+  assert.equal(loadLlmConfig(completeEnv).timeoutMs, 0);
+  assert.equal(loadLlmConfig({ ...completeEnv, LLM_TIMEOUT_MS: '0' }).timeoutMs, 0);
+  assert.equal(loadLlmConfig({ ...completeEnv, LLM_TIMEOUT_MS: '30000' }).timeoutMs, 30000);
+  for (const value of ['-1', '1.5', 'not-a-number']) {
     assert.throws(
       () => loadLlmConfig({ ...completeEnv, LLM_TIMEOUT_MS: value }),
-      /LLM_TIMEOUT_MS.*positive integer/i,
+      /LLM_TIMEOUT_MS.*non-negative integer/i,
     );
   }
+});
+
+test('validates the configured reasoning effort list and always exposes off', () => {
+  const config = loadLlmConfig({ ...completeEnv, LLM_REASONING_EFFORTS: 'max,low,max' });
+  assert.deepEqual(config.reasoningEfforts, ['max', 'low']);
+  assert.deepEqual(publicLlmConfig(config).reasoningEfforts, ['off', 'max', 'low']);
+  assert.deepEqual(loadLlmConfig(completeEnv).reasoningEfforts, ['low', 'high', 'max']);
+  assert.throws(
+    () => loadLlmConfig({ ...completeEnv, LLM_REASONING_EFFORTS: 'low,medium' }),
+    /LLM_REASONING_EFFORTS.*low.*high.*max/i,
+  );
 });
 
 test('requires extra JSON to be a non-array object', () => {

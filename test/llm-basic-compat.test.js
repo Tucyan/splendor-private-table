@@ -175,7 +175,7 @@ test('snapshot exposes only LLM availability and public model names', t => {
   const snapshot = store.snapshot(host);
   assert.equal(snapshot.llmAvailable, true);
   assert.deepEqual(snapshot.llmModels, {
-    enabled:true,baseModel:'base-model',advancedModel:'advanced-model',reflectionModel:'reflection-model',
+    enabled:true,baseModel:'base-model',advancedModel:'advanced-model',reflectionModel:'reflection-model',reasoningEfforts:['off','low','high','max'],
   });
   assert.equal(Object.hasOwn(snapshot, 'aiAvailable'), false);
   assert.ok(!JSON.stringify(snapshot).includes(llmConfig.apiKey));
