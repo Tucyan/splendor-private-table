@@ -165,7 +165,9 @@ fi
 
 # Runtime-created LLM logs must be writable only by the service account.
 LOG_DIR="$APP_DIR/data/logs/llm"
-install -d -m 0700 -o "${OWNER%%:*}" -g "${OWNER##*:}" "$APP_DIR/data" "$APP_DIR/data/ai-memory" "$LOG_DIR"
+install -d -m 0700 -o "${OWNER%%:*}" -g "${OWNER##*:}" "$APP_DIR/data"
+install -d -m 0700 -o "${OWNER%%:*}" -g "${OWNER##*:}" "$APP_DIR/data/ai-memory"
+install -d -m 0700 -o "${OWNER%%:*}" -g "${OWNER##*:}" "$LOG_DIR"
 
 if (( UPDATE_SERVICE_UNIT == 1 )) && [[ -f "$APP_DIR/deploy/splendor.service" ]]; then
   UNIT_FILE="/etc/systemd/system/${SERVICE}.service"
