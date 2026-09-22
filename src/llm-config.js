@@ -43,6 +43,36 @@ function parseExtraBody(rawValue) {
   return extraBody;
 }
 
+function parseBoolean(rawValue, fallback) {
+  if (!hasValue(rawValue)) return fallback;
+  const value = String(rawValue).trim().toLowerCase();
+  if (value === 'true' || value === '1') return true;
+  if (value === 'false' || value === '0') return false;
+  throw new Error('LLM_LOG_ENABLED and DEBUG_AUTO_PLAY_SAVE_EXPERIENCE must be boolean');
+}
+
+function parsePositiveInt(rawValue, fallback, name) {
+  if (!hasValue(rawValue)) return fallback;
+  const text = String(rawValue).trim();
+  const value = Number(text);
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
+  return value;
+}
+
+function parseDebugAutoPlay(env) {
+  if (!hasValue(env.DEBUG_AUTO_PLAY_NAME)) return null;
+  const mode = hasValue(env.DEBUG_AUTO_PLAY_MODE) ? String(env.DEBUG_AUTO_PLAY_MODE).trim() : 'llm-advanced';
+  const modes = new Set(['llm-basic', 'llm-advanced', 'local-simple', 'local-normal', 'local-hard', 'local-hell']);
+  if (!modes.has(mode)) throw new Error('DEBUG_AUTO_PLAY_MODE is invalid');
+  return Object.freeze({
+    name: String(env.DEBUG_AUTO_PLAY_NAME).trim().slice(0, 24),
+    mode,
+    delayMs: parsePositiveInt(env.DEBUG_AUTO_PLAY_DELAY_MS, 900, 'DEBUG_AUTO_PLAY_DELAY_MS'),
+    maxTurns: parsePositiveInt(env.DEBUG_AUTO_PLAY_MAX_TURNS, 200, 'DEBUG_AUTO_PLAY_MAX_TURNS'),
+    saveExperience: parseBoolean(env.DEBUG_AUTO_PLAY_SAVE_EXPERIENCE, false),
+  });
+}
+
 function validateUrl(rawUrl) {
   const urlText = String(rawUrl).trim();
   let parsedUrl;
@@ -70,6 +100,9 @@ export function loadLlmConfig(env = process.env) {
       reflectionModel: undefined,
       timeoutMs: 20000,
       extraBody: freezeDeep({}),
+      logEnabled: parseBoolean(env.LLM_LOG_ENABLED, true),
+      logDirectory: hasValue(env.LLM_LOG_DIR) ? String(env.LLM_LOG_DIR).trim() : 'data/logs/llm',
+      debugAutoPlay: parseDebugAutoPlay(env),
     });
   }
   if (missing.length > 0) {
@@ -93,6 +126,9 @@ export function loadLlmConfig(env = process.env) {
     reflectionModel,
     timeoutMs: parseTimeout(env.LLM_TIMEOUT_MS),
     extraBody: freezeDeep(parseExtraBody(env.LLM_REQUEST_EXTRA_JSON)),
+    logEnabled: parseBoolean(env.LLM_LOG_ENABLED, true),
+    logDirectory: hasValue(env.LLM_LOG_DIR) ? String(env.LLM_LOG_DIR).trim() : 'data/logs/llm',
+    debugAutoPlay: parseDebugAutoPlay(env),
   });
 }
 

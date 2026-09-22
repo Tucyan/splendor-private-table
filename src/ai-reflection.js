@@ -59,16 +59,18 @@ export function buildReflectionPrompt(snapshot, { existingLessons = [] } = {}) {
 }
 
 export class ReflectionCoordinator {
-  constructor({ store = new AiMemoryStore(), llmConfig = { enabled: false }, fetchImpl = fetch, requestJson = requestLlmJson, timeoutMs = 20000, maxAttempts = 3 } = {}) {
+  constructor({ store = new AiMemoryStore(), llmConfig = { enabled: false }, fetchImpl = fetch, requestJson = requestLlmJson, timeoutMs = 20000, maxAttempts = 3, logger } = {}) {
     this.store = store; this.llmConfig = llmConfig; this.fetchImpl = fetchImpl; this.requestJson = requestJson;
-    this.timeoutMs = timeoutMs; this.maxAttempts = maxAttempts;
+    this.timeoutMs = timeoutMs; this.maxAttempts = maxAttempts; this.logger = logger;
   }
 
   async enqueue(snapshot) {
     await this.store.saveEpisode(snapshot.gameId, snapshot);
     const existing = await this.store.loadJob(snapshot.gameId);
     if (existing) return existing;
-    return this.store.saveJob(snapshot.gameId, { status: 'pending', attempts: 0, createdAt: new Date().toISOString() });
+    const job = await this.store.saveJob(snapshot.gameId, { status: 'pending', attempts: 0, createdAt: new Date().toISOString(), lastError: null, lastErrorReasonCode: null, lastErrorAt: null });
+    await this.logger?.write({ type: 'reflection.queued', gameId: snapshot.gameId, phase: 'reflection', data: { status: job.status, attempts: job.attempts } });
+    return job;
   }
 
   pendingJobsSync() {
@@ -77,10 +79,18 @@ export class ReflectionCoordinator {
   }
 
   async reflect(snapshot, { signal } = {}) {
-    if (!this.llmConfig?.enabled) return { status: 'skipped', reason: 'llm_disabled' };
+    if (!this.llmConfig?.enabled) {
+      await this.logger?.write({ type: 'reflection.skipped', gameId: snapshot.gameId, phase: 'reflection', reasonCode: 'LLM_DISABLED' });
+      return { status: 'skipped', reason: 'llm_disabled' };
+    }
     const queued = await this.enqueue(snapshot);
     if (queued.status === 'completed') return { status: 'saved', committed: false, lessons: queued.lessons || 0 };
-    if ((queued.attempts || 0) >= this.maxAttempts) return { status: 'failed', reason: 'max_attempts' };
+    if ((queued.attempts || 0) >= this.maxAttempts) {
+      await this.logger?.write({ type: 'reflection.failed', level: 'warn', gameId: snapshot.gameId, phase: 'reflection', reasonCode: 'LLM_MAX_ATTEMPTS', attempt: queued.attempts, data: { attempts: queued.attempts } });
+      return { status: 'failed', reasonCode: 'LLM_MAX_ATTEMPTS', reason: 'max_attempts', attempts: queued.attempts };
+    }
+    const attempt = (queued.attempts || 0) + 1;
+    await this.logger?.write({ type: 'reflection.attempt', gameId: snapshot.gameId, phase: 'reflection', attempt, data: { maxAttempts: this.maxAttempts } });
     try {
       // Read existing lessons before the request so the model sees what it may revise.
       // Network traffic stays outside the memory lock; applyReflection re-validates inside it.
@@ -94,18 +104,25 @@ export class ReflectionCoordinator {
         temperature: 0.2,
         fetchImpl: this.fetchImpl,
         signal,
+        logger: this.logger,
+        requestId: undefined,
+        attempt,
+        phase: 'reflection',
+        gameId: snapshot.gameId,
       });
       // result.data is the parsed choices[0].message.content payload, never the HTTP envelope.
       const operations = validateExperienceOperations(result.data, { gameId: snapshot.gameId, existingLessons });
       const committed = await this.store.applyReflection(snapshot.gameId, operations);
-      await this.store.saveJob(snapshot.gameId, { ...queued, status: 'completed', attempts: (queued.attempts || 0) + 1, lessons: operations.length });
+      await this.store.saveJob(snapshot.gameId, { ...queued, status: 'completed', attempts: attempt, lessons: operations.length, lastError: null, lastErrorReasonCode: null, lastErrorAt: null });
+      await this.logger?.write({ type: 'reflection.committed', gameId: snapshot.gameId, phase: 'reflection', attempt, data: { lessons: operations.length, committed: committed.committed } });
       return { status: 'saved', committed: committed.committed, lessons: operations.length };
     } catch (error) {
       const reasonCode = llmReasonCode(error);
       if ((queued.attempts || 0) < this.maxAttempts) {
-        await this.store.recordJobAttempt(snapshot.gameId, { error: `${reasonCode}: ${text(error.message, 400)}` });
+        await this.store.recordJobAttempt(snapshot.gameId, { reasonCode, error: `${reasonCode}: ${text(error.message, 400)}` });
       }
-      return { status: 'failed', reasonCode, error: text(error.message, 500) };
+      await this.logger?.write({ type: 'reflection.failed', level: 'warn', gameId: snapshot.gameId, phase: 'reflection', attempt, reasonCode, data: { message: text(error.message, 300) } });
+      return { status: 'failed', reasonCode, error: text(error.message, 500), attempts: attempt };
     }
   }
 

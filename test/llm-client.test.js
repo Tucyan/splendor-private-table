@@ -126,6 +126,30 @@ test('omits max_tokens when the caller explicitly disables the client token limi
   assert.equal(Object.hasOwn(body, 'max_tokens'), false);
 });
 
+test('emits correlated request and response metadata without prompt or response content', async () => {
+  const events = [];
+  await requestLlmJson({
+    config,
+    model: 'm',
+    messages,
+    logger: { write: async event => events.push(event) },
+    requestId: 'req-test',
+    attempt: 2,
+    phase: 'advanced-decision',
+    gameId: 'game-test',
+    playerId: 'player-test',
+    turn: 3,
+    fetchImpl: async () => successfulResponse(),
+  });
+  assert.deepEqual(events.map(event => event.type), ['llm.request', 'llm.response']);
+  assert.equal(events[0].requestId, 'req-test');
+  assert.equal(events[1].requestId, 'req-test');
+  assert.equal(events[0].attempt, 2);
+  assert.equal(events[1].data.responseChars, 15);
+  assert.equal(Object.hasOwn(events[0], 'messages'), false);
+  assert.equal(JSON.stringify(events).includes('answer'), false);
+});
+
 test('rejects empty and non-string completion content with a stable code', async () => {
   for (const content of ['', '   ', null, { answer: 'not a string' }]) {
     await assert.rejects(

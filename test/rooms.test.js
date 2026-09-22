@@ -177,6 +177,25 @@ test('AI waits for an online human and resumes once connected',async t=>{
   store.attach(host,new Stream());await delay(80);assert.equal(calls,1);assert.equal(room.game.turn,0);
 });
 
+test('configured debug auto-play host starts immediately and cannot take over the seat', async t => {
+  const store = new RoomStore({
+    llmConfig,
+    aiDelay: 1,
+    debugAutoPlay: { name: '调试托管', mode: 'local-simple', delayMs: 1, maxTurns: 4, saveExperience: false },
+  });
+  t.after(() => store.close());
+  const host = store.register(null, '调试托管');
+  store.create(host);
+  const room = store.room(host);
+  assert.equal(room.players[0].auto, true);
+  assert.equal(room.players.length, 2);
+  assert.equal(room.game?.status, 'playing');
+  assert.throws(() => store.action(host, { version: room.version, action: { type: 'take', gems: { white: 1 } } }), /自动托管/);
+  await delay(50);
+  assert.ok(room.game);
+  assert.ok(room.aiStatus?.source === 'local-simple' || room.game.status === 'finished');
+});
+
 test('AI status exposes safe adapter metadata without provider bodies or keys',async t=>{
   const {store,host,guest,room}=setup(t,{aiDelay:1,llmConfig,aiChoose:async(_g,_id,actions)=>({
     action:actions[0],source:'llm-basic-fallback',reasonCode:'LLM_HTTP_503',notice:'LLM 本回合不可用，已由本地策略完成。',

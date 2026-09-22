@@ -163,6 +163,10 @@ else
   log "未找到用户 ${OWNER%%:*}，跳过 chown；可设置 SPLENDOR_OWNER"
 fi
 
+# Runtime-created LLM logs must be writable only by the service account.
+LOG_DIR="$APP_DIR/data/logs/llm"
+install -d -m 0700 -o "${OWNER%%:*}" -g "${OWNER##*:}" "$APP_DIR/data" "$APP_DIR/data/ai-memory" "$LOG_DIR"
+
 if (( UPDATE_SERVICE_UNIT == 1 )) && [[ -f "$APP_DIR/deploy/splendor.service" ]]; then
   UNIT_FILE="/etc/systemd/system/${SERVICE}.service"
   if [[ ! -f $UNIT_FILE ]] || ! cmp -s "$APP_DIR/deploy/splendor.service" "$UNIT_FILE"; then

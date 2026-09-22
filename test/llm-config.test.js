@@ -27,6 +27,27 @@ test('loads the complete provider-neutral LLM configuration', () => {
     reflectionModel: 'reflection-model',
     timeoutMs: 30000,
     extraBody: { temperature: 0.2 },
+    logEnabled: true,
+    logDirectory: 'data/logs/llm',
+    debugAutoPlay: null,
+  });
+});
+
+test('loads optional redacted logging and debug auto-play configuration', () => {
+  const config = loadLlmConfig({
+    ...completeEnv,
+    LLM_LOG_ENABLED: 'false',
+    LLM_LOG_DIR: '/var/lib/splendor/logs/llm',
+    DEBUG_AUTO_PLAY_NAME: '调试托管',
+    DEBUG_AUTO_PLAY_MODE: 'llm-advanced',
+    DEBUG_AUTO_PLAY_DELAY_MS: '25',
+    DEBUG_AUTO_PLAY_MAX_TURNS: '40',
+    DEBUG_AUTO_PLAY_SAVE_EXPERIENCE: 'true',
+  });
+  assert.equal(config.logEnabled, false);
+  assert.equal(config.logDirectory, '/var/lib/splendor/logs/llm');
+  assert.deepEqual(config.debugAutoPlay, {
+    name: '调试托管', mode: 'llm-advanced', delayMs: 25, maxTurns: 40, saveExperience: true,
   });
 });
 
@@ -40,6 +61,9 @@ test('disables LLM when all required variables are missing', () => {
     reflectionModel: undefined,
     timeoutMs: 20000,
     extraBody: {},
+    logEnabled: true,
+    logDirectory: 'data/logs/llm',
+    debugAutoPlay: null,
   });
 });
 

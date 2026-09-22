@@ -33,7 +33,10 @@ export function reflectionStatusView(room) {
     return { state, kind: 'success', label: '经验已保存', detail };
   }
   if (state === 'failed') {
-    return { state, kind: 'error', label: '经验同步失败', detail: '本局经验暂未保存；不会影响刚刚完成的对局。' };
+    const attempts = Number(source?.attempts);
+    const reason = typeof source?.lastErrorReasonCode === 'string' ? `（${source.lastErrorReasonCode}）` : '';
+    const retry = Number.isInteger(attempts) && attempts > 0 ? `已尝试 ${attempts} 次` : '已记录失败原因';
+    return { state, kind: 'error', label: '经验同步失败', detail: `${retry}${reason}；本局经验暂未保存，不会影响刚刚完成的对局。` };
   }
   if (state === 'continue') {
     return { state, kind: 'warning', label: '同步失败，继续使用上次经验', detail: '本局仍可正常进行；新的经验将在下次同步时重试。' };

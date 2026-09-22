@@ -502,6 +502,8 @@ export class AiMemoryStore {
         attempts,
         lastAttemptAt: now(),
         lastError: metadata.error ? String(metadata.error).slice(0, 500) : null,
+        lastErrorReasonCode: typeof metadata.reasonCode === 'string' ? metadata.reasonCode.slice(0, 80) : null,
+        lastErrorAt: now(),
         status: attempts >= MAX_ATTEMPTS ? 'failed' : (existing.status || 'pending'),
       });
     }));

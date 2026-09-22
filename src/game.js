@@ -191,11 +191,11 @@ function finishGame(game) {
   game.pending = null;
 }
 
-export function endGame(game) {
+export function endGame(game, reason = 'host') {
   if (!game || game.status !== 'playing') throw new Error('没有正在进行的对局');
   const next = copy(game);
-  next.endReason = 'host';
-  addLog(next, next.players[next.turn].id, '：房主结束本局，按当前声望与发展卡数量结算');
+  next.endReason = reason;
+  addLog(next, next.players[next.turn].id, reason === 'auto_limit' ? '：调试自动托管达到回合上限，本局结束' : '：房主结束本局，按当前声望与发展卡数量结算');
   finishGame(next);
   return next;
 }

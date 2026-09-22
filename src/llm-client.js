@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 const PROTECTED_BODY_FIELDS = ['model', 'messages', 'response_format', 'stream'];
 const VALID_MESSAGE_ROLES = new Set(['system', 'developer', 'user', 'assistant', 'tool', 'function']);
 const INTERNAL_ERRORS = new WeakSet();
@@ -151,6 +153,13 @@ export async function requestLlmJson({
   temperature = 0.2,
   signal,
   fetchImpl = fetch,
+  logger,
+  requestId = randomUUID(),
+  attempt = 1,
+  phase = 'llm',
+  gameId,
+  playerId,
+  turn,
 }) {
   validateInput({ config, model, messages });
 
@@ -176,6 +185,12 @@ export async function requestLlmJson({
   } catch {
     throw createError('LLM_INVALID_REQUEST', 'LLM request body is not serializable');
   }
+
+  const startedAt = Date.now();
+  await logger?.write({
+    type: 'llm.request', requestId, gameId, playerId, turn, attempt, phase,
+    data: { model, messageCount: messages.length, promptChars: messages.reduce((total, message) => total + message.content.length, 0), hasMaxTokens: Object.hasOwn(body, 'max_tokens'), maxTokens: body.max_tokens, temperature },
+  });
 
   const controller = new AbortController();
   let timedOut = false;
@@ -255,6 +270,15 @@ export async function requestLlmJson({
     } catch {
       throw createError('LLM_INVALID_JSON', 'LLM response content was not valid JSON');
     }
+    await logger?.write({
+      type: 'llm.response', requestId, gameId, playerId, turn, attempt, phase, status,
+      durationMs: Date.now() - startedAt,
+      data: { finishReason: choice?.finish_reason ?? null, responseChars: content.length, usage: {
+        promptTokens: envelope.usage?.prompt_tokens,
+        completionTokens: envelope.usage?.completion_tokens,
+        totalTokens: envelope.usage?.total_tokens,
+      } },
+    });
     return {
       data,
       usage: envelope.usage ?? null,
@@ -263,12 +287,19 @@ export async function requestLlmJson({
   } catch (error) {
     if (timedOut) throw createError('LLM_TIMEOUT', 'LLM request timed out');
     if (externallyAborted) throw createError('LLM_ABORTED', 'LLM request was cancelled');
-    if (error && typeof error === 'object' && INTERNAL_ERRORS.has(error)) {
-      throw error;
-    }
-    throw createError('LLM_NETWORK_ERROR', 'LLM network request failed', {
+    const normalized = error && typeof error === 'object' && INTERNAL_ERRORS.has(error)
+      ? error
+      : createError('LLM_NETWORK_ERROR', 'LLM network request failed', {
       cause: safeCause(error, config.apiKey, messages),
+      });
+    await logger?.write({
+      type: 'llm.error', level: 'warn', requestId, gameId, playerId, turn, attempt, phase,
+      status: normalized.status,
+      reasonCode: llmReasonCode(normalized),
+      durationMs: Date.now() - startedAt,
+      data: { safeMessage: normalized.message },
     });
+    throw normalized;
   } finally {
     if (timer) clearTimeout(timer);
     if (signal) signal.removeEventListener('abort', onExternalAbort);

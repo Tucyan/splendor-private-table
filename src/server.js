@@ -5,6 +5,7 @@ import path from 'node:path';
 import { RoomStore } from './rooms.js';
 import { AiMemoryStore } from './ai-memory-store.js';
 import { loadLlmConfig } from './llm-config.js';
+import { LlmLogger } from './llm-logger.js';
 
 const PUBLIC=fileURLToPath(new URL('../public/',import.meta.url));
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.ogg':'audio/ogg'};
@@ -21,7 +22,8 @@ async function bodyOf(req){
 export function createServer(options={}){
   const {llmConfig:injectedLlmConfig,env=process.env,...roomOptions}=options;
   const llmConfig=injectedLlmConfig??loadLlmConfig(env);
-  const store=new RoomStore({memoryStore:new AiMemoryStore(),...roomOptions,llmConfig});
+  const logger=roomOptions.logger || new LlmLogger({ directory:llmConfig.logDirectory, enabled:llmConfig.logEnabled, apiKey:llmConfig.apiKey });
+  const store=new RoomStore({memoryStore:new AiMemoryStore(),...roomOptions,llmConfig,logger});
   const registrations=new Map();
   function allowRegistration(ip){
     const now=Date.now();
