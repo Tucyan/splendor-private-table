@@ -1,3 +1,5 @@
+import { requestLlmJson, llmReasonCode } from './llm-client.js';
+
 const COLORS = ['white','blue','green','red','black'];
 
 // Identical prefix on every turn/room. No timestamps, player names or chat history.
@@ -49,26 +51,43 @@ export function localAction(game, playerId, actions) {
 }
 
 export async function chooseAIAction(game, playerId, actions, {
-  key=process.env.deepseekkey || process.env.DEEPSEEK_API_KEY || '',
-  model=process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
-  fetchImpl=fetch,timeoutMs=20000,signal,
+  llmConfig,
+  requestJson=requestLlmJson,
+  signal,
+  logger,
+  gameId='current',
+  turn=game?.turn,
 }={}) {
   const fallback=()=>localAction(game,playerId,actions);
-  if(!key) return {action:fallback(),source:'local'};
+  if(!llmConfig?.enabled) return {action:fallback(),source:'local'};
   try {
-    const timeout=AbortSignal.timeout(timeoutMs);
-    const res=await fetchImpl('https://api.deepseek.com/chat/completions',{
-      method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},
-      signal:signal?AbortSignal.any([signal,timeout]):timeout,
-      body:JSON.stringify({model,messages:buildMessages(game,playerId,actions),thinking:{type:'disabled'},response_format:{type:'json_object'},max_tokens:128,temperature:0.6,stream:false}),
+    const result=await requestJson({
+      config:llmConfig,
+      model:llmConfig.model,
+      messages:buildMessages(game,playerId,actions),
+      maxTokens:null,
+      temperature:0.6,
+      signal,
+      logger,
+      phase:'basic-decision',
+      gameId,
+      playerId,
+      turn,
     });
-    if(!res.ok) throw new Error('request_failed');
-    const data=await res.json();
-    const decision=JSON.parse(data.choices?.[0]?.message?.content||'');
-    if(!Number.isInteger(decision.actionIndex)||!actions[decision.actionIndex]) throw new Error('invalid_action');
-    return {action:actions[decision.actionIndex],source:'deepseek',cacheHitTokens:data.usage?.prompt_cache_hit_tokens||0};
-  } catch {
+    const index=result?.data?.actionIndex;
+    if(!Number.isInteger(index)||index<0||index>=actions.length){
+      const error=new Error('LLM returned an invalid action index');
+      error.code='LLM_INVALID_ACTION';
+      throw error;
+    }
+    return {action:actions[index],source:'llm-basic',cacheHitTokens:result.usage?.prompt_cache_hit_tokens||0};
+  } catch (error) {
     // Exactly one request: neither timeout nor malformed JSON is retried.
-    return {action:fallback(),source:'fallback',notice:'DeepSeek 本回合未返回有效决策，已由本地策略完成。'};
+    return {
+      action:fallback(),
+      source:'llm-basic-fallback',
+      reasonCode:llmReasonCode(error),
+      notice:'LLM 本回合未返回有效决策，已由本地策略完成。',
+    };
   }
 }

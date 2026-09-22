@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { RoomStore } from './rooms.js';
 import { AiMemoryStore } from './ai-memory-store.js';
+import { loadLlmConfig } from './llm-config.js';
+import { LlmLogger } from './llm-logger.js';
 
 const PUBLIC=fileURLToPath(new URL('../public/',import.meta.url));
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.ogg':'audio/ogg'};
@@ -18,7 +20,10 @@ async function bodyOf(req){
 }
 
 export function createServer(options={}){
-  const store=new RoomStore({memoryStore:new AiMemoryStore(),...options});
+  const {llmConfig:injectedLlmConfig,env=process.env,...roomOptions}=options;
+  const llmConfig=injectedLlmConfig??loadLlmConfig(env);
+  const logger=roomOptions.logger || new LlmLogger({ directory:llmConfig.logDirectory, enabled:llmConfig.logEnabled, apiKey:llmConfig.apiKey });
+  const store=new RoomStore({memoryStore:new AiMemoryStore(),...roomOptions,llmConfig,logger});
   const registrations=new Map();
   function allowRegistration(ip){
     const now=Date.now();
@@ -43,7 +48,7 @@ export function createServer(options={}){
             res.setHeader('Retry-After','60');json(res,429,{error:'新访客过于频繁，请一分钟后再试'});return;
           }
           const body=await bodyOf(req);const s=store.register(tokenOf(req),body.name);
-          const secure=process.env.COOKIE_SECURE==='true'?'; Secure':'';
+          const secure=env.COOKIE_SECURE==='true'?'; Secure':'';
           res.setHeader('Set-Cookie',`splendor_session=${s.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${secure}`);
           json(res,200,store.snapshot(s));return;
         }
@@ -60,7 +65,7 @@ export function createServer(options={}){
         switch(url.pathname){
           case '/api/rooms':store.create(s);break;
           case '/api/join':store.join(s,body.code);break;
-          case '/api/room/ai':store.addAI(s,body.mode);break;
+          case '/api/room/ai':store.addAI(s,body.mode,body.reasoningEffort);break;
           case '/api/room/start':store.start(s);break;
           case '/api/room/settings':store.settingsUpdate(s,body);break;
           case '/api/room/reset':store.reset(s);break;
@@ -86,7 +91,7 @@ export function createServer(options={}){
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const port=Number(process.env.PORT||3030);const host=process.env.HOST||'0.0.0.0';
-  const server=createServer();server.listen(port,host,()=>console.log(`璀璨宝石已启动：http://localhost:${port} （监听 ${host}）\nDeepSeek：${server.store.aiKey?'已配置':'未配置，可使用本地练习 AI'}`));
+  const server=createServer();server.listen(port,host,()=>console.log(`璀璨宝石已启动：http://localhost:${port} （监听 ${host}）\nLLM：${server.store.llmConfig.enabled?'已配置':'未配置，可使用本地练习 AI'}`));
   server.on('error',err=>{console.error(`服务启动失败：${err.code}`);process.exitCode=1;});
   for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{server.store.close();server.closeAllConnections();server.close();});
 }

@@ -13,6 +13,7 @@ import {
 } from '../src/ai-memory-store.js';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/ai-memory-writer.js', import.meta.url));
+const REQUEUE_SCRIPT = fileURLToPath(new URL('../scripts/requeue-llm-reflections.js', import.meta.url));
 
 async function temporaryStore(t, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'splendor-ai-memory-'));
@@ -56,19 +57,171 @@ function runWriter(directory, gameId, lessonId, options = {}) {
   });
 }
 
+function runRequeue(directory, args = []) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [REQUEUE_SCRIPT, ...args], {
+      env: { ...process.env, LLM_MEMORY_DIR: directory },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      if (code === 0) resolve(JSON.parse(stdout));
+      else reject(new Error(`requeue exited ${code ?? signal}: ${stderr || stdout}`));
+    });
+  });
+}
+
 test('uses the default memory directory and accepts an explicit directory override', () => {
-  assert.match(DEFAULT_MEMORY_DIR, /data[\\/]ai-memory[\\/]deepseek-advanced$/);
+  assert.match(DEFAULT_MEMORY_DIR, /data[\\/]ai-memory[\\/]llm-advanced$/);
   assert.equal(new AiMemoryStore({ directory: 'custom-memory' }).directory.endsWith('custom-memory'), true);
 });
 
-test('creates and validates an empty schema version one snapshot', async t => {
+test('uses LLM_MEMORY_DIR for the default when no directory option is provided', () => {
+  const previous = process.env.LLM_MEMORY_DIR;
+  process.env.LLM_MEMORY_DIR = 'env-memory';
+  try {
+    assert.equal(new AiMemoryStore().directory.endsWith('env-memory'), true);
+  } finally {
+    if (previous === undefined) delete process.env.LLM_MEMORY_DIR;
+    else process.env.LLM_MEMORY_DIR = previous;
+  }
+});
+
+test('creates and validates an empty schema version two snapshot', async t => {
   const { store } = await temporaryStore(t);
   const snapshot = await store.readMemory();
   assert.deepEqual(snapshot, createEmptyMemory());
+  assert.equal(snapshot.schemaVersion, 2);
   assert.doesNotThrow(() => validateMemorySnapshot(snapshot));
   assert.equal(snapshot.revision, 0);
   assert.deepEqual(snapshot.processedGameIds, []);
   assert.deepEqual(snapshot.lessons, []);
+});
+
+test('reads legacy v1 snapshots by migrating lessons in memory without rewriting the file', async t => {
+  const { directory, store } = await temporaryStore(t);
+  await mkdir(directory, { recursive: true });
+  const v1 = {
+    schemaVersion: 1,
+    revision: 3,
+    strategyVersion: 'deepseek-advanced-v1',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    processedGameIds: ['old-game'],
+    lessons: [{
+      id: 'legacy', playerCount: 2, targetScore: 15, phase: 'mid', trigger: 't',
+      recommendation: 'r', counterexample: '', evidenceGameId: 'old-game',
+      sampleCount: 2, successCount: 1, failureCount: 0, confidence: 0.5, status: 'candidate',
+    }],
+  };
+  await writeFile(join(directory, 'memory.json'), JSON.stringify(v1));
+  const memory = await store.readMemory();
+  assert.equal(memory.schemaVersion, 2);
+  assert.equal(memory.revision, 3);
+  const [migrated] = memory.lessons;
+  assert.equal(migrated.id, 'legacy');
+  assert.equal(migrated.createdAt, v1.updatedAt);
+  assert.equal(migrated.updatedAt, v1.updatedAt);
+  assert.deepEqual(migrated.evidenceGameIds, ['old-game']);
+  assert.equal(migrated.retirementReason, '');
+  assert.doesNotThrow(() => validateMemorySnapshot(memory));
+  assert.equal(JSON.parse(await readFile(join(directory, 'memory.json'), 'utf8')).schemaVersion, 1);
+  await store.commitExperience('new-game', []);
+  assert.equal(JSON.parse(await readFile(join(directory, 'memory.json'), 'utf8')).schemaVersion, 2);
+});
+
+test('a structurally invalid v1 snapshot is still never treated as an empty database', async t => {
+  const { directory, store } = await temporaryStore(t);
+  await mkdir(directory, { recursive: true });
+  const brokenV1 = {
+    schemaVersion: 1, revision: 1, strategyVersion: 'deepseek-advanced-v1', updatedAt: null,
+    processedGameIds: [], lessons: [{ id: 'broken', phase: 'mid' }],
+  };
+  await writeFile(join(directory, 'memory.json'), JSON.stringify(brokenV1));
+  await assert.rejects(store.readMemory(), error => error.code === 'MEMORY_CORRUPT');
+});
+
+test('applyReflection commits add, update and retire atomically', async t => {
+  const { store } = await temporaryStore(t);
+  await store.commitExperience('seed', [lesson('keep'), lesson('drop')]);
+  const result = await store.applyReflection('game-ops', [
+    { type: 'add', lesson: { playerCount: 2, targetScore: 15, phase: 'late', trigger: 't', recommendation: 'new bounded recommendation', counterexample: '', confidence: 0.5 }, evidenceGameId: 'game-ops' },
+    { type: 'update', lessonId: 'keep', patch: { confidence: 0.8 }, evidenceGameId: 'game-ops' },
+    { type: 'retire', lessonId: 'drop', reason: 'contradicted by current public evidence', evidenceGameId: 'game-ops' },
+  ]);
+  assert.equal(result.committed, true);
+  assert.equal(result.applied, 3);
+  const memory = await store.readMemory();
+  assert.deepEqual(memory.processedGameIds, ['seed', 'game-ops']);
+  const keep = memory.lessons.find(item => item.id === 'keep');
+  assert.equal(keep.confidence, 0.8);
+  assert.equal(keep.sampleCount, 2);
+  assert.deepEqual(keep.evidenceGameIds, ['game-keep', 'game-ops']);
+  assert.equal(keep.status, 'candidate');
+  const drop = memory.lessons.find(item => item.id === 'drop');
+  assert.equal(drop.status, 'retired');
+  assert.equal(drop.retirementReason, 'contradicted by current public evidence');
+  const added = memory.lessons.find(item => item.id.startsWith('lesson-'));
+  assert.equal(added.status, 'candidate');
+  assert.equal(added.sampleCount, 1);
+  assert.deepEqual(added.evidenceGameIds, ['game-ops']);
+  assert.ok(added.createdAt && added.updatedAt);
+});
+
+test('applyReflection replays of the same game do not accumulate samples', async t => {
+  const { store } = await temporaryStore(t);
+  await store.commitExperience('seed', [lesson('keep')]);
+  const operations = [{ type: 'update', lessonId: 'keep', patch: { confidence: 0.7 }, evidenceGameId: 'same-game' }];
+  const first = await store.applyReflection('same-game', operations);
+  const second = await store.applyReflection('same-game', operations);
+  assert.equal(first.committed, true);
+  assert.equal(second.committed, false);
+  assert.equal(second.applied, 0);
+  const memory = await store.readMemory();
+  assert.equal(memory.revision, 2);
+  assert.equal(memory.lessons.find(item => item.id === 'keep').sampleCount, 2);
+});
+
+test('applyReflection re-validates operation targets against the latest locked snapshot', async t => {
+  const { store } = await temporaryStore(t);
+  await store.commitExperience('seed', [lesson('keep')]);
+  await assert.rejects(
+    store.applyReflection('bad-ops', [{ type: 'update', lessonId: 'ghost', patch: { confidence: 0.5 }, evidenceGameId: 'bad-ops' }]),
+    /lessonId/,
+  );
+  const memory = await store.readMemory();
+  assert.deepEqual(memory.processedGameIds, ['seed']);
+  assert.equal(memory.revision, 1);
+});
+
+test('applyReflection re-validates operation evidence inside the lock', async t => {
+  const { store } = await temporaryStore(t);
+  await assert.rejects(
+    store.applyReflection('locked-game', [{
+      type: 'add',
+      lesson: { recommendation: 'must be rejected' },
+      evidenceGameId: 'different-game',
+    }]),
+    error => error.code === 'LLM_OPERATIONS_INVALID' && /evidenceGameId/i.test(error.message),
+  );
+  assert.deepEqual((await store.readMemory()).processedGameIds, []);
+});
+
+test('concurrent reflections touching different lessons do not lose updates', async t => {
+  const { store } = await temporaryStore(t);
+  await store.commitExperience('seed', [lesson('a'), lesson('b')]);
+  await Promise.all([
+    store.applyReflection('ga', [{ type: 'update', lessonId: 'a', patch: { confidence: 0.9 }, evidenceGameId: 'ga' }]),
+    store.applyReflection('gb', [{ type: 'update', lessonId: 'b', patch: { confidence: 0.1 }, evidenceGameId: 'gb' }]),
+  ]);
+  const memory = await store.readMemory();
+  assert.equal(memory.revision, 3);
+  assert.deepEqual([...memory.processedGameIds].sort(), ['ga', 'gb', 'seed']);
+  assert.equal(memory.lessons.find(item => item.id === 'a').confidence, 0.9);
+  assert.equal(memory.lessons.find(item => item.id === 'b').confidence, 0.1);
 });
 
 test('rejects invalid snapshots and never treats a corrupt primary as an empty database', async t => {
@@ -232,4 +385,64 @@ test('tracks retry attempts and caps them at three', async t => {
 test('rejects jobs whose persisted attempt metadata exceeds the retry cap', async t => {
   const { store } = await temporaryStore(t);
   await assert.rejects(store.saveJob('too-many', { status: 'pending', attempts: 4 }), error => error.code === 'ATTEMPTS_INVALID');
+});
+
+test('requeues only failed jobs and protects processed game ids under the memory lock', async t => {
+  const { store } = await temporaryStore(t);
+  await store.saveJob('failed', { status: 'failed', attempts: 3, lastError: 'boom', payload: { keep: true } });
+  await store.saveJob('completed', { status: 'completed', attempts: 1, lastError: null });
+  await store.saveJob('processed', { status: 'failed', attempts: 3, lastError: 'old' });
+  await store.commitExperience('processed', []);
+
+  const result = await store.requeueFailedJobs({ allFailed: true });
+  assert.deepEqual(result.requeued, ['failed']);
+  assert.deepEqual(result.skipped, [{ gameId: 'processed', reason: 'processed' }]);
+  assert.deepEqual(await store.loadJob('failed'), {
+    gameId: 'failed', status: 'pending', attempts: 0, lastError: null, payload: { keep: true },
+  });
+  assert.deepEqual(await store.loadJob('completed'), {
+    gameId: 'completed', status: 'completed', attempts: 1, lastError: null,
+  });
+});
+
+test('requeueFailedJob serializes with concurrent memory commits', async t => {
+  const { store } = await temporaryStore(t);
+  await store.saveJob('failed', { status: 'failed', attempts: 3, lastError: 'boom' });
+  await Promise.all([
+    store.requeueFailedJob('failed'),
+    store.commitExperience('new-game', []),
+  ]);
+  assert.equal((await store.loadJob('failed')).status, 'pending');
+  assert.deepEqual((await store.readMemory()).processedGameIds, ['new-game']);
+});
+
+test('requeue CLI defaults to a dry-run without changing failed jobs', async t => {
+  const { directory, store } = await temporaryStore(t);
+  await store.saveJob('failed', { status: 'failed', attempts: 3, lastError: 'boom' });
+  const result = await runRequeue(directory);
+  assert.equal(result.dryRun, true);
+  assert.deepEqual(result.eligible, ['failed']);
+  assert.equal((await store.loadJob('failed')).status, 'failed');
+});
+
+test('requeue CLI applies one explicit failed job and leaves completed jobs untouched', async t => {
+  const { directory, store } = await temporaryStore(t);
+  await store.saveJob('failed', { status: 'failed', attempts: 3, lastError: 'boom' });
+  await store.saveJob('completed', { status: 'completed', attempts: 1, lastError: null });
+  const result = await runRequeue(directory, ['--apply', '--game-id', 'failed']);
+  assert.equal(result.dryRun, false);
+  assert.deepEqual(result.requeued, ['failed']);
+  assert.equal((await store.loadJob('failed')).status, 'pending');
+  assert.equal((await store.loadJob('completed')).status, 'completed');
+});
+
+test('requeue CLI applies all failed jobs but never requeues processed ids', async t => {
+  const { directory, store } = await temporaryStore(t);
+  await store.saveJob('first', { status: 'failed', attempts: 3, lastError: 'one' });
+  await store.saveJob('processed', { status: 'failed', attempts: 3, lastError: 'two' });
+  await store.commitExperience('processed', []);
+  const result = await runRequeue(directory, ['--apply', '--all-failed']);
+  assert.deepEqual(result.requeued, ['first']);
+  assert.deepEqual(result.skipped, [{ gameId: 'processed', reason: 'processed' }]);
+  assert.equal((await store.loadJob('processed')).status, 'failed');
 });

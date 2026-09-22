@@ -5,6 +5,10 @@ import { buildMessages, chooseAIAction } from '../src/ai.js';
 const player = { id:'a',name:'A',gems:{white:0},bonuses:{},cards:[],reserved:[],nobles:[],score:0 };
 const game = { players:[player,{...player,id:'b',reserved:[{id:'SECRET',level:1}]}],turn:0,round:1,market:{1:[],2:[],3:[]},decks:{1:['DECK_SECRET'],2:[],3:[]},nobles:[],bank:{white:4},pending:null };
 const actions = [{type:'take',gems:{white:1}}];
+const llmConfig = Object.freeze({
+  enabled:true,apiKey:'fixture-secret',apiUrl:'https://llm.example/v1/chat/completions',
+  model:'base-model',advancedModel:'advanced-model',reflectionModel:'reflection-model',timeoutMs:321,extraBody:{},
+});
 
 test('AI receives the configured score and seat order with the same system prefix',()=>{
   const messages=buildMessages({...game,finishScore:20,turnOrder:['b','a']},'a',actions);
@@ -28,38 +32,73 @@ test('AI messages have a stable system prefix, current state only and hide priva
   assert.ok(content.includes('legalActions'));
 });
 
-test('DeepSeek request selects a supplied legal action and has no chat history', async () => {
+test('basic LLM uses the injected base model and selects the original supplied action', async () => {
   let calls=0;
-  const result=await chooseAIAction(game,'a',actions,{key:'test-only',fetchImpl:async (url,opts)=>{
+  const result=await chooseAIAction(game,'a',actions,{llmConfig,requestJson:async options=>{
     calls++;
-    assert.equal(url,'https://api.deepseek.com/chat/completions');
-    const body=JSON.parse(opts.body);
-    assert.equal(body.response_format.type,'json_object');
-    assert.equal(body.messages.length,2);
-    return {ok:true,json:async()=>({choices:[{message:{content:'{"actionIndex":0}'}}],usage:{prompt_cache_hit_tokens:64}})};
+    assert.equal(options.config,llmConfig);
+    assert.equal(options.model,'base-model');
+    assert.equal(options.messages.length,2);
+    assert.equal(options.maxTokens,null);
+    return {data:{actionIndex:0},usage:null,finishReason:'stop'};
   }});
-  assert.deepEqual(result.action,actions[0]);
-  assert.equal(result.source,'deepseek');
+  assert.equal(result.action,actions[0]);
+  assert.equal(result.source,'llm-basic');
   assert.equal(calls,1);
 });
 
-test('invalid output and request failure fall back without a retry', async () => {
-  for(const content of ['{"actionIndex":999}','not json','']){
+test('basic LLM passes correlation context to the shared request logger', async () => {
+  let received;
+  const logger = { write: async () => {} };
+  await chooseAIAction(game, 'a', actions, {
+    llmConfig,
+    logger,
+    gameId: 'game-basic-1',
+    turn: 2,
+    requestJson: async options => { received = options; return { data: { actionIndex: 0 }, usage: null, finishReason: 'stop' }; },
+  });
+  assert.equal(received.logger, logger);
+  assert.equal(received.gameId, 'game-basic-1');
+  assert.equal(received.playerId, 'a');
+  assert.equal(received.turn, 2);
+  assert.equal(received.phase, 'basic-decision');
+});
+
+test('invalid basic output falls back once with a stable reason code and safe notice', async () => {
+  for(const actionIndex of [999,-1,0.5,'0',undefined]){
     let calls=0;
-    const result=await chooseAIAction(game,'a',actions,{key:'test-only',fetchImpl:async()=>{calls++;return {ok:true,json:async()=>({choices:[{message:{content}}]})};}});
-    assert.equal(result.source,'fallback');
+    const result=await chooseAIAction(game,'a',actions,{llmConfig,requestJson:async()=>{
+      calls++;
+      return {data:{actionIndex},usage:null,finishReason:'stop'};
+    }});
+    assert.equal(result.source,'llm-basic-fallback');
+    assert.equal(result.reasonCode,'LLM_INVALID_ACTION');
     assert.deepEqual(result.action,actions[0]);
+    assert.match(result.notice,/本地策略/);
+    assert.ok(!JSON.stringify(result).includes(llmConfig.apiKey));
     assert.equal(calls,1);
   }
-  let calls=0;
-  const result=await chooseAIAction(game,'a',actions,{key:'test-only',fetchImpl:async()=>{calls++;throw new Error('private-secret-error');}});
-  assert.equal(result.source,'fallback');
-  assert.ok(!JSON.stringify(result).includes('private-secret'));
-  assert.equal(calls,1);
 });
 
-test('unconfigured AI uses a labelled local strategy', async () => {
-  const result=await chooseAIAction(game,'a',actions,{key:''});
+test('basic request errors preserve shared error codes and normalize unknown failures', async () => {
+  for(const [error,reasonCode] of [
+    [Object.assign(new Error(`provider leaked ${llmConfig.apiKey}`),{code:'LLM_TIMEOUT'}),'LLM_TIMEOUT'],
+    [new Error(`unknown leaked ${llmConfig.apiKey}`),'LLM_UNKNOWN_ERROR'],
+  ]){
+    let calls=0;
+    const result=await chooseAIAction(game,'a',actions,{llmConfig,requestJson:async()=>{calls++;throw error;}});
+    assert.equal(result.source,'llm-basic-fallback');
+    assert.equal(result.reasonCode,reasonCode);
+    assert.match(result.notice,/本地策略/);
+    assert.ok(!JSON.stringify(result).includes(llmConfig.apiKey));
+    assert.equal(calls,1);
+  }
+});
+
+test('unconfigured chooser uses a labelled local strategy without requesting an LLM', async () => {
+  let calls=0;
+  const result=await chooseAIAction(game,'a',actions,{llmConfig:{enabled:false},requestJson:async()=>{calls++;}});
   assert.equal(result.source,'local');
   assert.deepEqual(result.action,actions[0]);
+  assert.equal(calls,0);
 });

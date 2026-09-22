@@ -45,6 +45,16 @@ npm start
 
 ## DeepSeek AI
 
+文档中的 LLM 配置对所有兼容 Chat Completions 的服务生效；服务端不会把 API 密钥、完整提示词或模型原文写入日志。可通过 `LLM_LOG_ENABLED` 和 `LLM_LOG_DIR` 开关结构化 JSONL 诊断日志。日志只保留请求关联 ID、对局/席位、尝试次数、耗时、状态码和脱敏错误摘要。
+
+调试托管可通过 `.env` 中的 `DEBUG_AUTO_PLAY_NAME` 开启。仅当创建房间的昵称完全匹配时触发，服务器会自动开始并代打当前席位，达到 `DEBUG_AUTO_PLAY_MAX_TURNS` 后结束；默认不保存经验。留空则完全关闭。查询日志示例：
+
+```sh
+journalctl -u splendor --since '1 hour ago' -o cat | grep -E 'llm\\.|ai\\.|reflection\\.'
+tail -f data/logs/llm/llm-events.jsonl
+grep -E 'requestId|gameId|reasonCode|attempt' data/logs/llm/llm-events.jsonl
+```
+
 本地 AI 的快速对战基准可在仓库根目录运行 `npm run benchmark:local-ai`，输出包含四档策略在 2、3、4 人局中的座位分布、胜负、名次、每次行动耗时和搜索完成情况；默认每局最多 240 步、整个基准最多 30 秒。quick 共 12 局，但只有 3 个唯一牌序（每种人数一个），每个牌序复用 4 次进行座位轮换。完整基准需显式执行 `node scripts/benchmark-local-ai.js --profile full --max-games 60 --max-total-time-ms 600000`；60 局同样只有 3 个唯一牌序，按人数各复用 12 或 24 次穷举座位排列，不代表 60 个独立牌序。两种模式均在本地运行，不联网；超时和跳过的样本会在报告中明示。默认 quick 的高搜索截断率表示 hard/hell 受限于每次搜索 10 毫秒，不代表完整深度表现。地狱档知道真实牌堆顺序，基准结果不保证出现稳定的强度梯度。参数和预算详见[本地 AI 难度算法](docs/local-ai-difficulties.md#本地对战基准)。
 
 服务端按以下优先级读取密钥：

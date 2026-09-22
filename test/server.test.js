@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import { createServer } from '../src/server.js';
 
-async function fixture(t) {
-  const server=createServer({aiKey:''});
+const disabledLlmConfig=Object.freeze({enabled:false,model:undefined,advancedModel:undefined,reflectionModel:undefined});
+
+async function fixture(t,options={}) {
+  const server=createServer({llmConfig:disabledLlmConfig,...options});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>{server.closeAllConnections();server.close();});
   const base=`http://127.0.0.1:${server.address().port}`;
@@ -43,27 +45,46 @@ test('room capacity, nickname change and leave transfer host',async t=>{
   const {data}=await a('/api/rooms',{});await b('/api/join',{code:data.room.code});
   await a('/api/room/ai',{mode:'local'});await a('/api/room/ai',{mode:'local'});
   assert.equal((await a('/api/room/ai',{mode:'local'})).status,400);
-  assert.equal((await a('/api/room/ai',{mode:'deepseek'})).status,400);
+  assert.equal((await a('/api/room/ai',{mode:'llm-basic'})).status,400);
   assert.equal((await b('/api/session',{name:'新昵称'})).data.me.name,'新昵称');
   await a('/api/room/leave',{});
   const next=(await b('/api/room')).data;assert.equal(next.room.hostId,next.me.id);
 });
 
-test('the AI endpoint forwards all four local mode values without requiring a DeepSeek key', async t => {
+test('the AI endpoint forwards all four local modes and gates only generic LLM modes', async t => {
   for (const mode of ['local-simple', 'local-normal', 'local-hard', 'local-hell']) {
     const { client } = await fixture(t);
     const host = client();
     await host('/api/session', { name: '房主' });
     await host('/api/rooms', {});
-    for (const deepseekMode of ['deepseek', 'deepseek-advanced']) {
-      const denied = await host('/api/room/ai', { mode: deepseekMode });
+    for (const llmMode of ['llm-basic', 'llm-advanced']) {
+      const denied = await host('/api/room/ai', { mode: llmMode });
       assert.equal(denied.status, 400);
-      assert.match(denied.data.error, /DeepSeek.*密钥/);
+      assert.match(denied.data.error, /LLM.*配置/);
     }
+    assert.match((await host('/api/room/ai', { mode:'deepseek' })).data.error, /未知 AI 类型/);
     const result = await host('/api/room/ai', { mode });
     assert.equal(result.status, 200, `${mode}: ${result.data.error || ''}`);
     assert.equal(result.data.room.players.find(p => p.ai).mode, mode);
   }
+});
+
+test('createServer loads generic LLM config from its injected environment and publishes only model names', async t => {
+  const {client,server}=await fixture(t,{
+    llmConfig:undefined,
+    env:{LLM_API_KEY:'server-secret',LLM_API_URL:'https://provider.example/chat',LLM_MODEL:'base-x',LLM_ADVANCED_MODEL:'advanced-x',LLM_REASONING_EFFORTS:'low,max'},
+  });
+  assert.equal(server.store.llmConfig.model,'base-x');
+  const host=client();
+  const result=await host('/api/session',{name:'房主'});
+  assert.equal(result.data.llmAvailable,true);
+  assert.deepEqual(result.data.llmModels,{enabled:true,baseModel:'base-x',advancedModel:'advanced-x',reflectionModel:'advanced-x',reasoningEfforts:['off','low','max']});
+  await host('/api/rooms',{});
+  const added=await host('/api/room/ai',{mode:'llm-advanced',reasoningEffort:'max'});
+  assert.equal(added.data.room.players.at(-1).reasoningEffort,'max');
+  assert.equal((await host('/api/room/ai',{mode:'llm-advanced',reasoningEffort:'high'})).status,400);
+  assert.ok(!JSON.stringify(result.data).includes('server-secret'));
+  assert.ok(!JSON.stringify(result.data).includes('provider.example'));
 });
 
 test('HTTP validates session, JSON, origin and static file boundaries',async t=>{

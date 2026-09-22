@@ -1,8 +1,8 @@
 # 本地 AI 难度算法
 
-本地 AI 难度算法位于 `src/local-ai.js`，简单、普通、困难、地狱四档已接入房间与邀请菜单。四档模式分别为 `local-simple`、`local-normal`、`local-hard`、`local-hell`：简单档继续调用 `src/ai.js` 的原 `localAction`；普通、困难和地狱调用本文件中的评估算法。`src/ai.js` 保持不变，DeepSeek 基础仍走原 `aiChoose` 路径。
+本地 AI 难度算法位于 `src/local-ai.js`，简单、普通、困难、地狱四档已接入房间与邀请菜单。四档模式分别为 `local-simple`、`local-normal`、`local-hard`、`local-hell`：简单档继续调用 `src/ai.js` 的原 `localAction`；普通、困难和地狱调用本文件中的评估算法。`src/ai.js` 保持不变，LLM 基础仍走原 `aiChoose` 路径。
 
-DeepSeek · 高级由独立 `src/ai-advanced.js` 入口处理，使用公开战术上下文和有界结构化计划；也支持通过 `advancedChoose` 注入测试或部署适配器。高级失败时回退到独立本地战术动作，不改写基础 chooser。
+LLM · 高级由独立 `src/ai-advanced.js` 入口处理，使用公开战术上下文和有界结构化计划；也支持通过 `advancedChoose` 注入测试或部署适配器。高级失败时回退到独立本地战术动作，不改写基础 chooser。
 
 ## 调用
 
@@ -60,7 +60,7 @@ const analysis = analyzeLocalDifficulty(game, playerId, actions, { difficulty: '
 
 `node --test test/local-ai.test.js` 覆盖合法动作、不修改输入、自定义结束分数与座位、同分少卡、贵族、弃牌、停滞跳过、隐藏信息隔离、确定牌序盲抽、避免给对手送出制胜补牌、立即获胜与阻止对手获胜、预算退化，以及 2–4 人完整对局和宝石守恒。
 
-房间路由、pending 返还/贵族选择和本地难度入口另由 `test/deepseek-basic-compat.test.js`、`test/rooms.test.js` 与 `test/server.test.js` 覆盖。固定牌序的对战基准可用于观察结果，不等同于证明胜率梯度。
+房间路由、pending 返还/贵族选择和本地难度入口另由 `test/llm-basic-compat.test.js`、`test/rooms.test.js` 与 `test/server.test.js` 覆盖。固定牌序的对战基准可用于观察结果，不等同于证明胜率梯度。
 
 ## 本地对战基准
 

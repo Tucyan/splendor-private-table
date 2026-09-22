@@ -4,6 +4,8 @@ import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {RoomStore} from '../src/rooms.js';
 
+const llmConfig=Object.freeze({enabled:true,apiKey:'fixture-key',apiUrl:'https://llm.example/v1/chat/completions',model:'base-model',advancedModel:'advanced-model',reflectionModel:'reflection-model',timeoutMs:321,extraBody:{}});
+
 class Stream extends EventEmitter {
   write(text){this.last=text;}
   end(){this.destroyed=true;this.emit('close');}
@@ -14,6 +16,13 @@ function setup(t,options={}){
   store.create(host);store.join(guest,store.room(host).code);
   return {store,host,guest,room:store.room(host)};
 }
+test('host can add advanced LLM AI with only a configured reasoning effort',t=>{
+  const configured={...llmConfig,reasoningEfforts:['low','max']};
+  const {store,host,room}=setup(t,{llmConfig:configured});
+  store.addAI(host,'llm-advanced','max');
+  assert.equal(room.players.at(-1).reasoningEffort,'max');
+  assert.throws(()=>store.addAI(host,'llm-advanced','high'),/推理强度/);
+});
 test('host settings start at the first reordered seat and complete an equal-turn final round',t=>{
   const {store,host,guest,room}=setup(t);
   assert.equal(room.settings.finishScore,15);
@@ -69,9 +78,9 @@ test('duplicate action version cannot spend gems twice, and a reconnect retains 
   assert.equal(store.register(host.token,'新名').roomCode,room.code);
 });
 test('advanced observer memory records public reserves and masks blind identities',t=>{
-  const {store,host,guest,room}=setup(t,{aiKey:'test'});
-  store.addAI(host,'deepseek-advanced');
-  const observer=room.players.find(player=>player.mode==='deepseek-advanced');
+  const {store,host,guest,room}=setup(t,{llmConfig});
+  store.addAI(host,'llm-advanced');
+  const observer=room.players.find(player=>player.mode==='llm-advanced');
   store.start(host);
   const marketCard=room.game.market[1][0];
   store.action(host,{version:room.version,action:{type:'reserve',cardId:marketCard.id}});
@@ -88,11 +97,11 @@ test('advanced observer memory records public reserves and masks blind identitie
 });
 test('advanced observer memory records successful AI actions',async t=>{
   const {store,host,guest,room}=setup(t,{
-    aiKey:'test',aiDelay:1,
+    llmConfig,aiDelay:1,
     advancedChoose:async(_game,_id,actions)=>({action:actions.find(action=>action.type==='take')||actions[0],source:'advanced-test'}),
   });
-  store.addAI(host,'deepseek-advanced');
-  const observer=room.players.find(player=>player.mode==='deepseek-advanced');
+  store.addAI(host,'llm-advanced');
+  const observer=room.players.find(player=>player.mode==='llm-advanced');
   store.attach(host,new Stream());store.start(host);
   store.action(host,{version:room.version,action:{type:'take',gems:{white:1}}});
   store.action(guest,{version:room.version,action:{type:'take',gems:{blue:1}}});
@@ -103,9 +112,9 @@ test('advanced observer memory records successful AI actions',async t=>{
   assert.equal(room.aiStatus.source,'advanced-test');
 });
 test('advanced observer memory records the action used by AI fallback',async t=>{
-  const {store,host,guest,room}=setup(t,{aiKey:'test',aiDelay:1,advancedChoose:async()=>{throw new Error('adapter failed');}});
-  store.addAI(host,'deepseek-advanced');
-  const observer=room.players.find(player=>player.mode==='deepseek-advanced');
+  const {store,host,guest,room}=setup(t,{llmConfig,aiDelay:1,advancedChoose:async()=>{throw new Error('adapter failed');}});
+  store.addAI(host,'llm-advanced');
+  const observer=room.players.find(player=>player.mode==='llm-advanced');
   store.attach(host,new Stream());store.start(host);
   store.action(host,{version:room.version,action:{type:'take',gems:{white:1}}});
   store.action(guest,{version:room.version,action:{type:'take',gems:{blue:1}}});
@@ -113,14 +122,15 @@ test('advanced observer memory records the action used by AI fallback',async t=>
   const observed=store.advancedObservations.get(room.gameId,observer.id);
   assert.equal(observed.events.at(-1).actorId,observer.id);
   assert.ok(['take','buy','reserve','discard','noble','pass'].includes(observed.events.at(-1).type));
-  assert.equal(room.aiStatus.source,'fallback');
+  assert.equal(room.aiStatus.source,'llm-advanced-fallback');
+  assert.equal(room.aiStatus.reasonCode,'AI_ADAPTER_ERROR');
 });
 test('advanced observations and plans are cleared on reset, deletion, expiry and close',t=>{
   const tracked=()=>{
-    const value=setup(t,{aiKey:'test'});
-    value.store.addAI(value.host,'deepseek-advanced');
+    const value=setup(t,{llmConfig});
+    value.store.addAI(value.host,'llm-advanced');
     value.store.start(value.host);
-    const observer=value.room.players.find(player=>player.mode==='deepseek-advanced');
+    const observer=value.room.players.find(player=>player.mode==='llm-advanced');
     value.store.action(value.host,{version:value.room.version,action:{type:'take',gems:{white:1}}});
     value.store.advancedPlans.set(value.room.gameId,observer.id,{primaryTarget:'target',expectedActions:['take red']});
     return {...value,observer};
@@ -157,20 +167,54 @@ test('basic and local-only rooms do not create advanced observation buckets',t=>
   assert.equal(store.advancedObservations.size,0);
 });
 test('unexpected AI adapter exception falls back once without stopping the game',async t=>{
-  let calls=0;const {store,host,guest,room}=setup(t,{aiDelay:1,aiKey:'test',aiChoose:async()=>{calls++;throw new Error('adapter failed');}});
-  store.leave(guest);store.addAI(host,'deepseek');store.attach(host,new Stream());store.start(host);
+  let calls=0;const {store,host,guest,room}=setup(t,{aiDelay:1,llmConfig,aiChoose:async()=>{calls++;throw new Error('adapter failed');}});
+  store.leave(guest);store.addAI(host,'llm-basic');store.attach(host,new Stream());store.start(host);
   store.action(host,{version:room.version,action:{type:'take',gems:{white:1}}});
   await delay(80);
   assert.equal(calls,1);
   assert.equal(room.game.turn,0);
-  assert.equal(room.aiStatus.source,'fallback');
+  assert.equal(room.aiStatus.source,'llm-basic-fallback');
+  assert.equal(room.aiStatus.reasonCode,'AI_ADAPTER_ERROR');
 });
 test('AI waits for an online human and resumes once connected',async t=>{
-  let calls=0;const {store,host,guest,room}=setup(t,{aiDelay:1,aiKey:'test',aiChoose:async(g,id,actions)=>{calls++;return {action:actions[0],source:'deepseek'};}});
-  store.leave(guest);store.addAI(host,'deepseek');store.start(host);
+  let calls=0;const {store,host,guest,room}=setup(t,{aiDelay:1,llmConfig,aiChoose:async(g,id,actions)=>{calls++;return {action:actions[0],source:'llm-basic'};}});
+  store.leave(guest);store.addAI(host,'llm-basic');store.start(host);
   store.action(host,{version:room.version,action:{type:'take',gems:{white:1}}});
   await delay(30);assert.equal(calls,0);
   store.attach(host,new Stream());await delay(80);assert.equal(calls,1);assert.equal(room.game.turn,0);
+});
+
+test('configured debug auto-play host starts immediately and cannot take over the seat', async t => {
+  const store = new RoomStore({
+    llmConfig,
+    aiDelay: 1,
+    debugAutoPlay: { name: '调试托管', mode: 'local-simple', delayMs: 1, maxTurns: 4, saveExperience: false },
+  });
+  t.after(() => store.close());
+  const host = store.register(null, '调试托管');
+  store.create(host);
+  const room = store.room(host);
+  assert.equal(room.players[0].auto, true);
+  assert.equal(room.players.length, 2);
+  assert.equal(room.game?.status, 'playing');
+  assert.throws(() => store.action(host, { version: room.version, action: { type: 'take', gems: { white: 1 } } }), /自动托管/);
+  await delay(50);
+  assert.ok(room.game);
+  assert.ok(room.aiStatus?.source === 'local-simple' || room.game.status === 'finished');
+});
+
+test('AI status exposes safe adapter metadata without provider bodies or keys',async t=>{
+  const {store,host,guest,room}=setup(t,{aiDelay:1,llmConfig,aiChoose:async(_g,_id,actions)=>({
+    action:actions[0],source:'llm-basic-fallback',reasonCode:'LLM_HTTP_503',notice:'LLM 本回合不可用，已由本地策略完成。',
+  })});
+  store.leave(guest);store.addAI(host,'llm-basic');store.attach(host,new Stream());store.start(host);
+  store.action(host,{version:room.version,action:{type:'take',gems:{white:1}}});
+  await delay(80);
+  assert.equal(room.aiStatus.reasonCode,'LLM_HTTP_503');
+  assert.equal(room.aiStatus.source,'llm-basic-fallback');
+  assert.match(room.aiStatus.notice,/本地策略/);
+  assert.ok(!JSON.stringify(room.aiStatus).includes(llmConfig.apiKey));
+  assert.equal(Object.hasOwn(room.aiStatus,'body'),false);
 });
 
 test('only the host can force finish a game and return the room to the lobby',t=>{
@@ -187,10 +231,10 @@ test('only the host can force finish a game and return the room to the lobby',t=
 test('host ending during an AI request aborts it and rejects the late decision',async t=>{
   let resolveDecision,started;
   const start=new Promise(resolve=>{started=resolve;});
-  const {store,host,guest,room}=setup(t,{aiDelay:1,aiKey:'test',aiChoose:async(g,id,actions)=>{
+  const {store,host,guest,room}=setup(t,{aiDelay:1,llmConfig,aiChoose:async(g,id,actions)=>{
     started();return new Promise(resolve=>{resolveDecision=()=>resolve({action:actions[0],source:'local'});});
   }});
-  store.leave(guest);store.addAI(host,'deepseek');store.attach(host,new Stream());store.start(host);
+  store.leave(guest);store.addAI(host,'llm-basic');store.attach(host,new Stream());store.start(host);
   store.action(host,{version:room.version,action:{type:'take',gems:{white:1}}});
   await Promise.race([start,delay(1000).then(()=>{throw new Error('AI did not start');})]);
   const task=room.aiTask;store.finish(host);
