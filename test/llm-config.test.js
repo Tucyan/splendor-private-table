@@ -53,6 +53,11 @@ test('loads optional redacted logging and debug auto-play configuration', () => 
   });
 });
 
+test('debug auto-play accepts the beginner local mode', () => {
+  const config = loadLlmConfig({ DEBUG_AUTO_PLAY_NAME: '调试托管', DEBUG_AUTO_PLAY_MODE: 'local-beginner' });
+  assert.equal(config.debugAutoPlay.mode, 'local-beginner');
+});
+
 test('disables LLM when all required variables are missing', () => {
   assert.deepEqual(loadLlmConfig({}), {
     enabled: false,

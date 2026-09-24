@@ -51,8 +51,8 @@ test('room capacity, nickname change and leave transfer host',async t=>{
   const next=(await b('/api/room')).data;assert.equal(next.room.hostId,next.me.id);
 });
 
-test('the AI endpoint forwards all four local modes and gates only generic LLM modes', async t => {
-  for (const mode of ['local-simple', 'local-normal', 'local-hard', 'local-hell']) {
+test('the AI endpoint forwards all five local modes and gates only generic LLM modes', async t => {
+  for (const mode of ['local-beginner', 'local-simple', 'local-normal', 'local-hard', 'local-hell']) {
     const { client } = await fixture(t);
     const host = client();
     await host('/api/session', { name: '房主' });

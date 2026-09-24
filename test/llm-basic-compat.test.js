@@ -158,7 +158,7 @@ test('only generic LLM modes require enabled config; local aliases remain and pr
     assert.throws(() => store.addAI(host, mode), /未知 AI 类型/);
     assert.equal(room.players.length, 2);
   }
-  for (const mode of ['local-simple', 'local-normal', 'local-hard', 'local-hell', 'local']) {
+  for (const mode of ['local-beginner', 'local-simple', 'local-normal', 'local-hard', 'local-hell', 'local']) {
     const isolated = new RoomStore({ llmConfig: disabledLlmConfig });
     try {
       const owner = isolated.register(null, '房主');
@@ -168,6 +168,13 @@ test('only generic LLM modes require enabled config; local aliases remain and pr
       isolated.remove(isolated.room(owner), isolated.room(owner).players[1].id, false);
     } finally { isolated.close(); }
   }
+});
+
+test('local beginner plays a turn through the room scheduler', async t => {
+  const { room, bot } = await runBotTurn(t, 'local-beginner');
+  await waitFor(() => room.aiStatus?.state === 'done');
+  assert.equal(room.aiStatus.source, 'local-beginner');
+  assert.ok(room.game.log.some(entry => entry.playerId === bot.id));
 });
 
 test('snapshot exposes only LLM availability and public model names', t => {
@@ -234,7 +241,7 @@ test('local normal, hard and hell use their own evaluation for pending noble cho
   }
 });
 
-test('the invitation dialog offers all six modes and gates only LLM choices', async () => {
+test('the invitation dialog offers the beginner mode and gates only LLM choices', async () => {
   const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const firstStepStart = app.indexOf("case 'add-ai':");
   const secondStepStart = app.indexOf("case 'ai-difficulty':", firstStepStart);
@@ -248,6 +255,7 @@ test('the invitation dialog offers all six modes and gates only LLM choices', as
   assert.match(secondStep, /<h2>选择 AI 难度 \/ 类型<\/h2>/);
   assert.match(secondStep, /data-ai=/);
   for (const [mode, label] of [
+    ['local-beginner', '本地 · 新手'],
     ['local-simple', '本地 · 简单'], ['local-normal', '本地 · 普通'],
     ['local-hard', '本地 · 困难'], ['local-hell', '本地 · 地狱'],
     ['llm-basic', 'LLM · 基础'], ['llm-advanced', 'LLM · 高级'],
@@ -259,13 +267,13 @@ test('the invitation dialog offers all six modes and gates only LLM choices', as
   assert.match(app, /option\.requiresKey&&!state\.llmAvailable/);
 });
 
-test('AI strategy documents describe the four connected local modes and limit the advanced LLM claim', async () => {
+test('AI strategy documents describe the five connected local modes and limit the advanced LLM claim', async () => {
   const difficulties = await readFile(new URL('../docs/local-ai-difficulties.md', import.meta.url), 'utf8');
   const strategy = await readFile(new URL('../docs/local-ai-strategy-optimization.md', import.meta.url), 'utf8');
-  assert.match(difficulties, /简单.*普通.*困难.*地狱[\s\S]*已接入|已接入[\s\S]*简单.*普通.*困难.*地狱/);
+  assert.match(difficulties, /新手.*简单.*普通.*困难.*地狱[\s\S]*已接入|已接入[\s\S]*新手.*简单.*普通.*困难.*地狱/);
   assert.match(difficulties, /LLM · 高级[\s\S]*(src\/ai-advanced\.js|高级失败)/);
   assert.doesNotMatch(difficulties, /线上行为仍使用原有策略|以后接入房间时/);
-  assert.match(strategy, /六档 AI[\s\S]*local-simple[\s\S]*local-normal[\s\S]*local-hard[\s\S]*local-hell/);
+  assert.match(strategy, /七档 AI[\s\S]*local-beginner[\s\S]*local-simple[\s\S]*local-normal[\s\S]*local-hard[\s\S]*local-hell/);
   assert.match(strategy, /高级[\s\S]*(src\/ai-advanced\.js|公开战术上下文)/);
   assert.doesNotMatch(strategy, /尚未接入游戏入口|没有难度入口|开始接入难度入口之前/);
 });

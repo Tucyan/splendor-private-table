@@ -75,7 +75,7 @@ function parsePositiveInt(rawValue, fallback, name) {
 function parseDebugAutoPlay(env) {
   if (!hasValue(env.DEBUG_AUTO_PLAY_NAME)) return null;
   const mode = hasValue(env.DEBUG_AUTO_PLAY_MODE) ? String(env.DEBUG_AUTO_PLAY_MODE).trim() : 'llm-advanced';
-  const modes = new Set(['llm-basic', 'llm-advanced', 'local-simple', 'local-normal', 'local-hard', 'local-hell']);
+  const modes = new Set(['llm-basic', 'llm-advanced', 'local-beginner', 'local-simple', 'local-normal', 'local-hard', 'local-hell']);
   if (!modes.has(mode)) throw new Error('DEBUG_AUTO_PLAY_MODE is invalid');
   return Object.freeze({
     name: String(env.DEBUG_AUTO_PLAY_NAME).trim().slice(0, 24),

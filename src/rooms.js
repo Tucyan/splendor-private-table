@@ -1,6 +1,7 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import { createGame, applyAction, legalActions, viewGame, endGame } from './game.js';
 import { chooseAIAction, localAction } from './ai.js';
+import { beginnerAction } from './beginner-ai.js';
 import { chooseLocalDifficultyAction } from './local-ai.js';
 import { AdvancedObservationMemory, AdvancedPlanMemory } from './ai-advanced-context.js';
 import { createEndSnapshot, ReflectionCoordinator } from './ai-reflection.js';
@@ -85,7 +86,7 @@ export class RoomStore {
   addAI(s,mode='llm-basic',reasoningEffort='off'){
     const r=this.requireHost(s);if(r.game)fail('请在准备大厅邀请 AI');if(r.players.length>=4)fail('房间已满');
     if(mode==='local')mode='local-simple';
-    if(!['llm-basic','llm-advanced','local-simple','local-normal','local-hard','local-hell'].includes(mode))fail('未知 AI 类型');
+    if(!['llm-basic','llm-advanced','local-beginner','local-simple','local-normal','local-hard','local-hell'].includes(mode))fail('未知 AI 类型');
     if(mode.startsWith('llm-')&&!this.llmConfig.enabled)fail('服务端尚未启用 LLM 配置');
     const reasoningEfforts=this.llmConfig.reasoningEfforts||['low','high','max'];
     if(mode==='llm-advanced'&&!['off',...reasoningEfforts].includes(reasoningEffort))fail('LLM 推理强度无效');
@@ -156,6 +157,7 @@ export class RoomStore {
       } catch { options.experiences=[]; }
       return this.advancedChoose(r.game,p.id,actions,options);
     }
+    if(mode==='local-beginner')return {action:beginnerAction(r.game,p.id,actions),source:mode};
     if(mode==='local-simple')return {action:localAction(r.game,p.id,actions),source:mode};
     const difficulty={'local-normal':'normal','local-hard':'hard','local-hell':'hell'}[mode];
     if(!difficulty)fail('未知 AI 类型');

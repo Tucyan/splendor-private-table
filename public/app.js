@@ -14,10 +14,11 @@ const $=s=>document.querySelector(s);
 const COLORS=['white','blue','green','red','black'];
 const ALL=[...COLORS,'gold'];
 const NAMES={white:'钻石',blue:'蓝宝石',green:'祖母绿',red:'红宝石',black:'缟玛瑙',gold:'黄金'};
-const AI_MODE_NAMES={'llm-basic':'LLM · 基础','llm-advanced':'LLM · 高级','local-simple':'本地 · 简单','local-normal':'本地 · 普通','local-hard':'本地 · 困难','local-hell':'本地 · 地狱'};
+const AI_MODE_NAMES={'llm-basic':'LLM · 基础','llm-advanced':'LLM · 高级','local-beginner':'本地 · 新手','local-simple':'本地 · 简单','local-normal':'本地 · 普通','local-hard':'本地 · 困难','local-hell':'本地 · 地狱'};
 const REASONING_EFFORT_NAMES={off:'关闭',low:'低',high:'高',max:'最高'};
 const aiModeName=mode=>AI_MODE_NAMES[mode==='local'?'local-simple':mode]||'AI 商人';
 const AI_OPTIONS=[
+  {mode:'local-beginner',name:'本地 · 新手',detail:'适合初次练习 · 只按简单规则拿宝石和买牌'},
   {mode:'local-simple',name:'本地 · 简单',detail:'本地运行 · 简单策略'},
   {mode:'local-normal',name:'本地 · 普通',detail:'本地局面评估 · 无需密钥'},
   {mode:'local-hard',name:'本地 · 困难',detail:'更多局面推演 · 无需密钥'},
